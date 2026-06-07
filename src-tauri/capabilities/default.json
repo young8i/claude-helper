@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "description": "Default capability for Claude ZH Helper",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "updater:default",
+    "updater:allow-check",
+    "updater:allow-download",
+    "updater:allow-install",
+    "updater:allow-download-and-install"
+  ]
+}

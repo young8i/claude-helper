@@ -1,0 +1,124 @@
+# 从私有仓库构建 → 产物推送到公开 Releases 仓库
+name: Build and Publish Release
+
+on:
+  push:
+    tags: ["v*"]          # 打 tag 自动触发
+  workflow_dispatch:      # 也可以手动触发
+    inputs:
+      version:
+        description: "版本号（如 1.0.1）"
+        required: true
+
+env:
+  # ═══════════════════════════════════════════
+  # 公开 Releases 仓库（用户下载 + 自动更新走这里）
+  # ═══════════════════════════════════════════
+  RELEASES_REPO: young8i/claude-releases
+
+jobs:
+  build-publish:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            arch: x86_64
+          - os: macos-latest
+            platform: darwin
+            arch: aarch64
+          - os: windows-latest
+            platform: windows
+            arch: x86_64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        uses: tauri-apps/tauri-action@v0
+        id: tauri
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target ${{ matrix.platform == 'darwin' && format('{0}-apple-darwin', matrix.arch) || 'x86_64-pc-windows-msvc' }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-${{ matrix.arch }}
+          path: src-tauri/target/release/bundle/
+
+  # ═══════════════════════════════════════════════
+  # 汇总所有平台产物，签名，推送到公开 Releases 仓库
+  # ═══════════════════════════════════════════════
+  publish-release:
+    needs: build-publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bundles
+
+      - name: Build latest.json manifest
+        id: manifest
+        run: |
+          VERSION="${{ github.ref_name }}"
+          TAG="${VERSION#v}"
+          PUBDATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          cat > latest.json << JSONEOF
+          {
+            "version": "${VERSION}",
+            "notes": "Claude 中文助手 ${VERSION}。汉化包已同步至最新。",
+            "pub_date": "${PUBDATE}",
+            "platforms": {
+              "darwin-aarch64": {
+                "url": "https://github.com/${{ env.RELEASES_REPO }}/releases/download/${VERSION}/Claude中文助手_aarch64.app.tar.gz",
+                "signature": ""
+              },
+              "darwin-x86_64": {
+                "url": "https://github.com/${{ env.RELEASES_REPO }}/releases/download/${VERSION}/Claude中文助手_x64.app.tar.gz",
+                "signature": ""
+              },
+              "windows-x86_64": {
+                "url": "https://github.com/${{ env.RELEASES_REPO }}/releases/download/${VERSION}/Claude中文助手_x64.msi",
+                "signature": ""
+              }
+            }
+          }
+          JSONEOF
+
+          # 找到实际文件并修正 latest.json
+          for f in $(find bundles -name "*.app.tar.gz" -o -name "*.msi" | sort); do
+            echo "Found: $f"
+          done
+
+          cat latest.json
+
+      - name: Publish to public releases repo
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: ${{ env.RELEASES_REPO }}
+          token: ${{ secrets.PUBLIC_RELEASES_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: "Claude 中文助手 ${{ github.ref_name }}"
+          body: "Claude 中文助手 ${{ github.ref_name }}，汉化包同步更新。"
+          files: |
+            bundles/**/*.app.tar.gz
+            bundles/**/*.msi
+            latest.json
+          draft: false
+          prerelease: false

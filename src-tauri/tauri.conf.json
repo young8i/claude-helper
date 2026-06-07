@@ -1,0 +1,65 @@
+{
+  "productName": "Claude 中文助手",
+  "version": "1.0.0",
+  "identifier": "com.claude-zh-helper.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Claude 中文助手",
+        "width": 800,
+        "height": 640,
+        "minWidth": 680,
+        "minHeight": 560,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": true
+      }
+    ],
+    "security": { "csp": "default-src 'self'; img-src 'self' https: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'" }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png"
+    ],
+    "resources": [
+      "../resources/**/*.json",
+      "../resources/**/*.strings",
+      "../resources/**/*.command",
+      "../resources/**/*.bat",
+      "../scripts/**/*.py",
+      "../scripts/**/*.ps1"
+    ],
+    "windows": {
+      "wix": {
+        "language": "zh-CN"
+      },
+      "nsis": {
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "active": false,
+      "endpoints": [
+        "https://github.com/young8i/claude-releases/releases/latest/download/latest.json"
+      ],
+      "pubkey": "PLACEHOLDER",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
