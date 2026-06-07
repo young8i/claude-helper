@@ -13,18 +13,18 @@ jobs:
     strategy:
       matrix:
         include:
-          # Apple Silicon Mac
           - os: macos-latest
             platform: darwin
             arch: aarch64
-          # Intel Mac
+            target: aarch64-apple-darwin
           - os: macos-13
             platform: darwin
             arch: x86_64
-          # Windows
+            target: x86_64-apple-darwin
           - os: windows-latest
             platform: windows
             arch: x86_64
+            target: x86_64-pc-windows-msvc
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -37,6 +37,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Install dependencies
         run: npm ci
@@ -45,6 +47,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target ${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -61,33 +65,6 @@ jobs:
         with:
           path: bundles
 
-      - name: Build manifest and publish
-        run: |
-          VERSION="${{ github.ref_name }}"
-          PUBDATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          cat > latest.json << JSONEOF
-          {
-            "version": "${VERSION}",
-            "notes": "Claude 中文助手 ${VERSION}。汉化包已同步至最新。",
-            "pub_date": "${PUBDATE}",
-            "platforms": {
-              "darwin-aarch64": {
-                "url": "https://github.com/${{ env.RELEASES_REPO }}/releases/download/${VERSION}/Claude中文助手_aarch64.app.tar.gz",
-                "signature": ""
-              },
-              "darwin-x86_64": {
-                "url": "https://github.com/${{ env.RELEASES_REPO }}/releases/download/${VERSION}/Claude中文助手_x64.app.tar.gz",
-                "signature": ""
-              },
-              "windows-x86_64": {
-                "url": "https://github.com/${{ env.RELEASES_REPO }}/releases/download/${VERSION}/Claude中文助手_x64.msi",
-                "signature": ""
-              }
-            }
-          }
-          JSONEOF
-
       - name: Publish to public releases repo
         uses: softprops/action-gh-release@v2
         with:
@@ -99,6 +76,5 @@ jobs:
           files: |
             bundles/**/*.app.tar.gz
             bundles/**/*.msi
-            latest.json
           draft: false
           prerelease: false
