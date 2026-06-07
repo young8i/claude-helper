@@ -115,7 +115,7 @@ pub fn run_install_windows(lang_code: &str, mode: &str) -> LocalizeResult {
         .output()
     {
         Ok(output) => {
-            let _stdout = String::from_utf8_lossy(&output.stdout);
+            let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
 
             if output.status.success() {
