@@ -9,12 +9,12 @@ HELPER_DIR="$(dirname "$SCRIPT_DIR")"
 echo "🔑 Generating Tauri updater signing keys..."
 echo ""
 
-# Generate keypair
-cd "$HELPER_DIR/src-tauri"
-cargo tauri signer generate -w ~/.tauri/claude-zh-helper.key 2>&1 || {
+# Use npx tauri from project's local @tauri-apps/cli
+cd "$HELPER_DIR"
+npx tauri signer generate -w ~/.tauri/claude-zh-helper.key 2>&1 || {
   echo ""
-  echo "❌ Key generation failed. Make sure @tauri-apps/cli is installed:"
-  echo "   npm install -g @tauri-apps/cli"
+  echo "❌ Key generation failed. Make sure dependencies are installed:"
+  echo "   npm install"
   exit 1
 }
 
