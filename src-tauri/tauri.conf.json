@@ -59,7 +59,7 @@
       "endpoints": [
         "https://github.com/young8i/claude-releases/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEyQUM3QUM1OThGMkVEOTkKUldTWjdmS1l4WHFzRW9xTkR1cWxWdDJ5OEl6cmUxaE9sN1dxZmEwVGYrYlpTbE95aXJMMk9PRXYK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc2OTQwNjYyNDk2ODhDNDQKUldSRWpHaEpZZ2FVZGl0cXdVRnl0ZTBTd3I1dzVVR0EzamVsMUM1NUo2UUFOeS8yY2p4NWVRd1QK",
       "windows": {
         "installMode": "passive"
       }
