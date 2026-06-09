@@ -150,7 +150,7 @@ function bindEvents(invoke) {
     const lang = $("#langSelect").value, mode = $("#modeSelect").value;
     lockButtons();
     showProgress(true); showLog(true, "");
-    appendLog(`🔧 ${lang} / ${mode} 安装中…\n📋 请在弹出的授权窗口输入密码\n`);
+    appendLog(`🔧 ${lang} / ${mode} 安装中…\n📋 请在弹出的授权窗口确认；Windows 会通过 PowerShell 执行\n`);
 
     const start = Date.now();
     let t = setInterval(() => appendLog(`⏱️ ${Math.floor((Date.now()-start)/1000)}s\n`), 10000);
@@ -172,7 +172,7 @@ function bindEvents(invoke) {
   // Uninstall
   $("#btnUninstall").addEventListener("click", async () => {
     lockButtons();
-    showProgress(true); showLog(true, "🔧 正在恢复原始版本…\n📋 请在弹出的授权窗口输入密码\n");
+    showProgress(true); showLog(true, "🔧 正在恢复原始版本…\n📋 请在弹出的授权窗口确认；Windows 会通过 PowerShell 执行\n");
     const start = Date.now();
     let t = setInterval(() => appendLog(`⏱️ ${Math.floor((Date.now()-start)/1000)}s\n`), 10000);
     try {
@@ -196,7 +196,7 @@ function bindEvents(invoke) {
   $("#btnCcswitchInstall").addEventListener("click", async () => {
     const btn = $("#btnCcswitchInstall"), res = $("#ccswitchResult");
     btn.disabled = true; btn.textContent = "⏳ 安装中…";
-    res.classList.remove("hidden"); res.textContent = "⏳ 正在安装，可能需要几分钟…"; res.style.color = "var(--text-secondary)";
+    res.classList.remove("hidden"); res.textContent = "⏳ 正在安装，可能需要几分钟；Windows 可能会弹出 UAC 授权…"; res.style.color = "var(--text-secondary)";
     try {
       const msg = await invoke("install_ccswitch");
       await sleep(1500);

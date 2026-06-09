@@ -96,26 +96,91 @@ fn find_ccswitch() -> (bool, Option<String>) {
     {
         let candidates = [
             r"C:\Program Files\CC-Switch\CC-Switch.exe",
+            r"C:\Program Files\CC Switch\CC Switch.exe",
+            r"C:\Program Files\CCSwitch\CCSwitch.exe",
             r"C:\Program Files (x86)\CC-Switch\CC-Switch.exe",
+            r"C:\Program Files (x86)\CC Switch\CC Switch.exe",
+            r"C:\Program Files (x86)\CCSwitch\CCSwitch.exe",
         ];
         for p in &candidates {
             if std::path::Path::new(p).exists() { return (true, Some(p.to_string())); }
         }
         if let Ok(local) = std::env::var("LOCALAPPDATA") {
-            for sub in &["Programs\\CC-Switch", "Programs\\cc-switch", "cc-switch"] {
-                let exe = std::path::PathBuf::from(&local).join(sub).join("CC-Switch.exe");
-                if exe.exists() { return (true, Some(exe.to_string_lossy().to_string())); }
-                let exe2 = std::path::PathBuf::from(&local).join(sub).join("cc-switch.exe");
-                if exe2.exists() { return (true, Some(exe2.to_string_lossy().to_string())); }
+            for sub in &[
+                "Programs\\CC-Switch",
+                "Programs\\CC Switch",
+                "Programs\\CCSwitch",
+                "Programs\\cc-switch",
+                "cc-switch",
+            ] {
+                let base = std::path::PathBuf::from(&local).join(sub);
+                for name in &["CC-Switch.exe", "CC Switch.exe", "CCSwitch.exe", "cc-switch.exe", "ccswitch.exe"] {
+                    let exe = base.join(name);
+                    if exe.exists() { return (true, Some(exe.to_string_lossy().to_string())); }
+                }
             }
         }
-        if let Ok(out) = std::process::Command::new("where").arg("cc-switch").output() {
-            let p = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").trim().to_string();
-            if !p.is_empty() { return (true, Some(p)); }
+
+        if let Some(path) = find_ccswitch_from_windows_registry() {
+            return (true, Some(path));
+        }
+
+        for cmd in &["cc-switch", "ccswitch", "CC-Switch", "CCSwitch"] {
+            if let Ok(out) = std::process::Command::new("where").arg(cmd).output() {
+                let p = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").trim().to_string();
+                if !p.is_empty() { return (true, Some(p)); }
+            }
         }
     }
 
     (false, None)
+}
+
+#[cfg(target_os = "windows")]
+fn find_ccswitch_from_windows_registry() -> Option<String> {
+    let command = r#"
+$roots = @(
+  'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+  'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+  'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+)
+$apps = @(Get-ItemProperty $roots -ErrorAction SilentlyContinue |
+  Where-Object { $_.DisplayName -match 'CC[- ]?Switch|ccswitch' })
+foreach ($app in $apps) {
+  if ($app.InstallLocation -and (Test-Path -LiteralPath $app.InstallLocation)) {
+    foreach ($name in @('CC-Switch.exe','CC Switch.exe','CCSwitch.exe','cc-switch.exe','ccswitch.exe')) {
+      $candidate = Join-Path $app.InstallLocation $name
+      if (Test-Path -LiteralPath $candidate) { $candidate; exit 0 }
+    }
+  }
+  if ($app.DisplayIcon) {
+    $icon = ([string]$app.DisplayIcon).Trim('"')
+    $icon = $icon -replace ',\d+$',''
+    if (Test-Path -LiteralPath $icon) { $icon; exit 0 }
+  }
+}
+"#;
+
+    let output = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            command,
+        ])
+        .output()
+        .ok()?;
+
+    let path = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    if path.is_empty() { None } else { Some(path) }
 }
 
 fn get_version(install_path: &str) -> Option<String> {
@@ -149,9 +214,33 @@ fn get_version(install_path: &str) -> Option<String> {
             let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if !v.is_empty() { return Some(v); }
         }
+
+        let command = format!(
+            "(Get-Item -LiteralPath {}).VersionInfo.ProductVersion",
+            ps_single_quote(install_path),
+        );
+        if let Ok(out) = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                &command,
+            ])
+            .output()
+        {
+            let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !v.is_empty() { return Some(v); }
+        }
     }
 
     None
+}
+
+#[cfg(target_os = "windows")]
+fn ps_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 pub fn run_one_click_install() -> Result<String, String> {
@@ -190,13 +279,54 @@ pub fn run_one_click_install() -> Result<String, String> {
 
     #[cfg(target_os = "windows")]
     {
-        let out = std::process::Command::new("winget")
-            .args(["install", "--id", "farion1231.cc-switch", "--accept-package-agreements"])
+        let command = r#"
+$ErrorActionPreference = 'Stop'
+$packageId = 'farion1231.CC-Switch'
+$winget = (Get-Command winget.exe -ErrorAction SilentlyContinue).Source
+if ($winget) {
+  & $winget install --id $packageId --exact --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+  if ($LASTEXITCODE -eq 0) { exit 0 }
+  Write-Host "winget failed with exit code $LASTEXITCODE; falling back to GitHub Releases."
+}
+else {
+  Write-Host "winget.exe not found; falling back to GitHub Releases."
+}
+
+$release = Invoke-RestMethod `
+  -Uri 'https://api.github.com/repos/farion1231/cc-switch/releases/latest' `
+  -Headers @{ Accept = 'application/vnd.github+json'; 'User-Agent' = 'claude-zh-helper' } `
+  -TimeoutSec 20
+$asset = @($release.assets | Where-Object { $_.name -match 'Windows.*\.msi$|\.msi$' } | Select-Object -First 1)
+if (-not $asset) {
+  throw 'GitHub Releases 中未找到 Windows MSI 安装包。'
+}
+$installer = Join-Path $env:TEMP $asset.name
+Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $installer -UseBasicParsing
+$escapedInstaller = '"' + ($installer -replace '"', '\"') + '"'
+$p = Start-Process -FilePath 'msiexec.exe' -ArgumentList "/i $escapedInstaller /qn /norestart" -Verb RunAs -Wait -PassThru -ErrorAction Stop
+if ($p.ExitCode -in @(0, 3010, 1638)) { exit 0 }
+if ($null -ne $p.ExitCode) { exit $p.ExitCode }
+exit 0
+"#;
+
+        let out = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                command,
+            ])
             .output();
+
         match out {
-            Ok(o) if o.status.success() => Ok("✅ cc-switch 安装成功！请在开始菜单中找到并启动。".to_string()),
-            Ok(o) => Err(format!("winget 安装失败。请手动从 {} 下载 .msi 安装包。\n\n{}", CCSWITCH_RELEASES, String::from_utf8_lossy(&o.stderr))),
-            Err(_) => Err(format!("winget 不可用。请手动从 {} 下载。", CCSWITCH_RELEASES)),
+            Ok(o) if o.status.success() => Ok("✅ cc-switch 安装成功！请在开始菜单或系统托盘中启动。".to_string()),
+            Ok(o) => {
+                let stdout = String::from_utf8_lossy(&o.stdout);
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                Err(format!("cc-switch 一键安装失败。请手动从 {} 下载 .msi 安装包。\n\n{}\n{}", CCSWITCH_RELEASES, stdout, stderr))
+            }
+            Err(e) => Err(format!("PowerShell 不可用，无法一键安装 cc-switch。请手动从 {} 下载。\n\n{}", CCSWITCH_RELEASES, e)),
         }
     }
 
@@ -224,7 +354,7 @@ brew install --cask cc-switch
 
 **Windows**:
 ```bash
-winget install farion1231.cc-switch
+winget install --id farion1231.CC-Switch --exact --source winget
 ```
 
 也可从 [GitHub Releases](https://github.com/farion1231/cc-switch/releases) 手动下载安装包。

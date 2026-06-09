@@ -245,15 +245,26 @@ function Write-AsarCoworkSignatureWarning {
     Write-Host ""
 }
 
+function Get-ClaudeAppxPackages {
+    $packages = @()
+    $packages += @(Get-AppxPackage -Name "Claude" -ErrorAction SilentlyContinue)
+    $packages += @(Get-AppxPackage -Name "*Claude*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match "Claude" -or $_.PackageFullName -match "Claude|Anthropic" })
+
+    return @($packages |
+        Where-Object { $_ -and $_.PackageFullName } |
+        Sort-Object PackageFullName -Unique)
+}
+
 function Find-ClaudePath {
-    $packages = @(Get-AppxPackage -Name "Claude" -ErrorAction SilentlyContinue)
+    $packages = @(Get-ClaudeAppxPackages | Sort-Object InstallDate -Descending)
     foreach ($package in $packages) {
         if ($package.InstallLocation -and (Test-Path $package.InstallLocation)) {
             return $package.InstallLocation
         }
     }
 
-    $fallback = Get-ChildItem "C:\Program Files\WindowsApps\Claude_*" -Directory -ErrorAction SilentlyContinue |
+    $fallback = Get-ChildItem "C:\Program Files\WindowsApps\*Claude*" -Directory -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
     if ($fallback) {
@@ -349,7 +360,7 @@ function Get-ClaudeConfigPaths {
     }
 
     $packageNames = @()
-    $packages = @(Get-AppxPackage -Name "Claude" -ErrorAction SilentlyContinue)
+    $packages = @(Get-ClaudeAppxPackages)
     foreach ($package in $packages) {
         if ($package.PackageFamilyName) {
             $packageNames += $package.PackageFamilyName
@@ -358,7 +369,7 @@ function Get-ClaudeConfigPaths {
 
     if ($packageNames.Count -eq 0) {
         $packageRoot = Join-Path $env:LOCALAPPDATA "Packages"
-        $packageDirs = @(Get-ChildItem (Join-Path $packageRoot "Claude_*") -Directory -ErrorAction SilentlyContinue |
+        $packageDirs = @(Get-ChildItem (Join-Path $packageRoot "*Claude*") -Directory -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending)
         foreach ($packageDir in $packageDirs) {
             $packageNames += $packageDir.Name
@@ -2169,7 +2180,7 @@ function Get-ThirdPartyConfigLibraryPaths {
 
     if ($env:LOCALAPPDATA) {
         $packageRoot = Join-Path $env:LOCALAPPDATA "Packages"
-        $packageDirs = @(Get-ChildItem (Join-Path $packageRoot "Claude_*") -Directory -ErrorAction SilentlyContinue |
+        $packageDirs = @(Get-ChildItem (Join-Path $packageRoot "*Claude*") -Directory -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTime -Descending)
         foreach ($packageDir in $packageDirs) {
             $paths += Join-Path $packageDir.FullName "LocalCache\Roaming\Claude-3p\configLibrary"

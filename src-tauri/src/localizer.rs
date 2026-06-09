@@ -84,10 +84,7 @@ pub fn run_install_macos(lang_code: &str, mode: &str) -> LocalizeResult {
 /// Run the localization install (Windows)
 #[cfg(target_os = "windows")]
 pub fn run_install_windows(lang_code: &str, mode: &str) -> LocalizeResult {
-    use std::process::Command;
-
     let mut steps: Vec<String> = Vec::new();
-    let resources_dir = get_resources_dir();
 
     // Map mode to script parameter
     let (patch_mode, action) = match mode {
@@ -98,31 +95,19 @@ pub fn run_install_windows(lang_code: &str, mode: &str) -> LocalizeResult {
     };
 
     steps.push("检查系统权限...".to_string());
+    steps.push("准备 PowerShell 安装环境...".to_string());
     steps.push(format!("执行安装脚本 (语言: {}, 模式: {})...", lang_code, mode));
 
-    let script_path = std::path::PathBuf::from(&resources_dir)
-        .join("scripts")
-        .join("install_windows.ps1");
-
-    match Command::new("powershell")
-        .args([
-            "-ExecutionPolicy", "Bypass",
-            "-File", script_path.to_str().unwrap_or("install_windows.ps1"),
-            "-Action", action,
-            "-Language", lang_code,
-            "-PatchMode", patch_mode,
-        ])
-        .output()
-    {
+    match run_elevated_windows_installer(action, lang_code, Some(patch_mode)) {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
 
             if output.status.success() {
-                steps.push("安装完成！".to_string());
+                steps.push("PowerShell 安装脚本执行完成！".to_string());
                 LocalizeResult {
                     success: true,
-                    message: format!("✅ 中文补丁安装成功！语言: {}, 模式: {}", lang_code, mode),
+                    message: format!("✅ 中文补丁安装成功！语言: {}, 模式: {}\n\n已通过 PowerShell 执行安装脚本，请重启 Claude Desktop 生效。", lang_code, mode),
                     steps,
                 }
             } else {
@@ -132,7 +117,7 @@ pub fn run_install_windows(lang_code: &str, mode: &str) -> LocalizeResult {
                 }
                 LocalizeResult {
                     success: false,
-                    message: format!("❌ 安装失败，请以管理员身份运行本程序后重试"),
+                    message: "❌ 安装失败，请确认已允许 UAC 授权，并查看临时目录中的 install-windows.log".to_string(),
                     steps,
                 }
             }
@@ -199,26 +184,12 @@ pub fn run_uninstall_macos() -> LocalizeResult {
 /// Run the uninstall/restore (Windows)
 #[cfg(target_os = "windows")]
 pub fn run_uninstall_windows() -> LocalizeResult {
-    use std::process::Command;
-
     let mut steps: Vec<String> = Vec::new();
-    let resources_dir = get_resources_dir();
 
     steps.push("准备恢复原始版本...".to_string());
+    steps.push("准备 PowerShell 卸载环境...".to_string());
 
-    let script_path = std::path::PathBuf::from(&resources_dir)
-        .join("scripts")
-        .join("install_windows.ps1");
-
-    match Command::new("powershell")
-        .args([
-            "-ExecutionPolicy", "Bypass",
-            "-File", script_path.to_str().unwrap_or("install_windows.ps1"),
-            "-Action", "uninstall",
-            "-Language", "zh-CN",
-        ])
-        .output()
-    {
+    match run_elevated_windows_installer("uninstall", "zh-CN", None) {
         Ok(output) => {
             if output.status.success() {
                 steps.push("恢复完成！".to_string());
@@ -245,26 +216,187 @@ pub fn run_uninstall_windows() -> LocalizeResult {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn run_elevated_windows_installer(
+    action: &str,
+    lang_code: &str,
+    patch_mode: Option<&str>,
+) -> Result<std::process::Output, String> {
+    let project_root = find_project_root()
+        .ok_or_else(|| "未找到打包资源目录：缺少 resources 或 scripts/install_windows.ps1".to_string())?;
+    let staged_root = stage_windows_installer(&project_root)?;
+    let script_path = staged_root.join("scripts").join("install_windows.ps1");
+
+    if !script_path.exists() {
+        return Err(format!("未找到 Windows 安装脚本: {}", script_path.display()));
+    }
+
+    let mut child_args = vec![
+        "-NoLogo".to_string(),
+        "-NoProfile".to_string(),
+        "-ExecutionPolicy".to_string(),
+        "Bypass".to_string(),
+        "-File".to_string(),
+        script_path.to_string_lossy().to_string(),
+        "-Action".to_string(),
+        action.to_string(),
+        "-Language".to_string(),
+        lang_code.to_string(),
+    ];
+
+    if let Some(mode) = patch_mode {
+        child_args.push("-PatchMode".to_string());
+        child_args.push(mode.to_string());
+    }
+
+    let command = format!(
+        "$env:CLAUDE_ZH_SKIP_UPDATE_CHECK='1'; \
+         $p = Start-Process -FilePath {} -ArgumentList {} -WorkingDirectory {} -Verb RunAs -Wait -PassThru -ErrorAction Stop; \
+         if ($null -ne $p.ExitCode) {{ exit $p.ExitCode }}; exit 0",
+        ps_single_quote("powershell.exe"),
+        ps_single_quote(&windows_command_line(&child_args)),
+        ps_single_quote(&staged_root.to_string_lossy()),
+    );
+
+    std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &command,
+        ])
+        .output()
+        .map_err(|e| format!("无法启动 PowerShell: {}", e))
+}
+
+#[cfg(target_os = "windows")]
+fn stage_windows_installer(project_root: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let staged_root = std::env::temp_dir().join("ClaudeDesktopZhCnInstaller");
+    let staged_scripts = staged_root.join("scripts");
+    let staged_resources = staged_root.join("resources");
+
+    if staged_root.exists() {
+        std::fs::remove_dir_all(&staged_root)
+            .map_err(|e| format!("无法清理临时安装目录 {}: {}", staged_root.display(), e))?;
+    }
+
+    std::fs::create_dir_all(&staged_scripts)
+        .map_err(|e| format!("无法创建临时 scripts 目录: {}", e))?;
+    std::fs::create_dir_all(&staged_resources)
+        .map_err(|e| format!("无法创建临时 resources 目录: {}", e))?;
+
+    let script_src = project_root.join("scripts").join("install_windows.ps1");
+    std::fs::copy(&script_src, staged_scripts.join("install_windows.ps1"))
+        .map_err(|e| format!("无法复制 Windows 安装脚本 {}: {}", script_src.display(), e))?;
+
+    copy_dir_contents(&project_root.join("resources"), &staged_resources)?;
+
+    Ok(staged_root)
+}
+
+#[cfg(target_os = "windows")]
+fn copy_dir_contents(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    if !src.exists() {
+        return Err(format!("资源目录不存在: {}", src.display()));
+    }
+
+    for entry in std::fs::read_dir(src)
+        .map_err(|e| format!("无法读取资源目录 {}: {}", src.display(), e))?
+    {
+        let entry = entry.map_err(|e| format!("无法读取资源目录项: {}", e))?;
+        let source_path = entry.path();
+        let target_path = dst.join(entry.file_name());
+
+        if source_path.is_dir() {
+            std::fs::create_dir_all(&target_path)
+                .map_err(|e| format!("无法创建目录 {}: {}", target_path.display(), e))?;
+            copy_dir_contents(&source_path, &target_path)?;
+        } else {
+            std::fs::copy(&source_path, &target_path)
+                .map_err(|e| format!("无法复制资源文件 {}: {}", source_path.display(), e))?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_command_line(values: &[String]) -> String {
+    values
+        .iter()
+        .map(|v| windows_command_arg(v))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(target_os = "windows")]
+fn windows_command_arg(value: &str) -> String {
+    let escaped = value.replace('"', "\\\"");
+    format!("\"{}\"", escaped)
+}
+
+#[cfg(target_os = "windows")]
+fn ps_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn find_project_root() -> Option<std::path::PathBuf> {
+    project_root_candidates()
+        .into_iter()
+        .find(|path| is_project_root(path))
+}
+
+fn project_root_candidates() -> Vec<std::path::PathBuf> {
+    let mut candidates = Vec::new();
+
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    candidates.push(manifest.clone());
+    if let Some(parent) = manifest.parent() {
+        candidates.push(parent.to_path_buf());
+        if let Some(grandparent) = parent.parent() {
+            candidates.push(grandparent.to_path_buf());
+        }
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            candidates.push(parent.to_path_buf());
+            candidates.push(parent.join("resources"));
+            if let Some(grandparent) = parent.parent() {
+                candidates.push(grandparent.to_path_buf());
+            }
+        }
+    }
+
+    if let Ok(current_dir) = std::env::current_dir() {
+        candidates.push(current_dir.clone());
+        candidates.push(current_dir.join("resources"));
+    }
+
+    candidates
+}
+
+fn is_project_root(path: &std::path::Path) -> bool {
+    path.join("resources").join("frontend-zh-CN.json").exists()
+        && path.join("scripts").join("install_windows.ps1").exists()
+}
+
+fn find_macos_installer_root() -> Option<std::path::PathBuf> {
+    project_root_candidates()
+        .into_iter()
+        .find(|path| {
+            path.join("install-mac.command").exists()
+                && path.join("scripts").join("patch_claude_zh_cn.py").exists()
+                && path.join("resources").join("release.json").exists()
+        })
+}
+
 /// Get the resources directory (where install scripts and translation files live)
 pub fn get_resources_dir() -> String {
-    #[cfg(debug_assertions)]
-    {
-        // Dev mode: CARGO_MANIFEST_DIR is desktop-helper/src-tauri
-        // Go up 2 levels to desktop-helper, then 1 more to claude-desktop-zh-cn
-        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let main_project = manifest
-            .parent()   // desktop-helper/src-tauri -> desktop-helper
-            .and_then(|p| p.parent())  // desktop-helper -> claude-desktop-zh-cn
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| ".".to_string());
-        main_project
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        // Production: resources bundled alongside the binary
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_string_lossy().to_string()))
-            .unwrap_or_else(|| ".".to_string())
-    }
+    find_macos_installer_root()
+        .or_else(find_project_root)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string())
 }

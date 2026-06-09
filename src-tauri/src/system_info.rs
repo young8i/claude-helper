@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -56,50 +56,164 @@ pub fn get_os_version() -> String {
 
 /// Find the Claude Desktop installation path
 pub fn find_claude_path() -> Option<PathBuf> {
-    if cfg!(target_os = "macos") {
+    #[cfg(target_os = "macos")]
+    {
         let app_path = PathBuf::from("/Applications/Claude.app");
         if app_path.exists() {
             return Some(app_path);
         }
-    } else if cfg!(target_os = "windows") {
-        // Check Windows AppX install
-        let local_app_data = dirs::data_local_dir()?;
-        let anthropic_base = local_app_data.join("AnthropicClaude");
-        if anthropic_base.exists() {
-            // Look for app-* directories (unpackaged install)
-            if let Ok(entries) = std::fs::read_dir(&anthropic_base) {
-                let mut app_dirs: Vec<PathBuf> = entries
-                    .filter_map(|e| e.ok())
-                    .filter(|e| {
-                        e.file_name()
-                            .to_string_lossy()
-                            .starts_with("app-")
-                    })
-                    .map(|e| e.path())
-                    .collect();
-                app_dirs.sort_by(|a, b| {
-                    b.metadata().unwrap().modified().unwrap()
-                        .cmp(&a.metadata().unwrap().modified().unwrap())
-                });
-                if let Some(latest) = app_dirs.first() {
-                    return Some(latest.clone());
-                }
-            }
-        }
+    }
 
-        // Check Program Files
-        let program_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
-        let claude_path = PathBuf::from(&program_files).join("Claude").join("Claude.exe");
-        if claude_path.exists() {
-            return Some(claude_path);
+    #[cfg(target_os = "windows")]
+    {
+        return find_windows_claude_path();
+    }
+
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn find_windows_claude_path() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+
+    candidates.extend(find_unpacked_windows_claude_paths());
+    candidates.extend(find_appx_windows_claude_paths());
+
+    if let Some(local_app_data) = dirs::data_local_dir() {
+        for sub in [
+            "Programs\\Claude",
+            "Programs\\Claude Desktop",
+            "Programs\\AnthropicClaude",
+        ] {
+            candidates.push(local_app_data.join(sub));
         }
     }
+
+    for env_name in ["ProgramFiles", "ProgramFiles(x86)"] {
+        if let Ok(base) = std::env::var(env_name) {
+            for sub in ["Claude", "Claude Desktop", "AnthropicClaude"] {
+                candidates.push(PathBuf::from(&base).join(sub));
+            }
+        }
+    }
+
+    candidates.into_iter().find(|p| get_windows_claude_resources_path(p).is_some())
+}
+
+#[cfg(target_os = "windows")]
+fn find_unpacked_windows_claude_paths() -> Vec<PathBuf> {
+    let Some(local_app_data) = dirs::data_local_dir() else {
+        return Vec::new();
+    };
+
+    let anthropic_base = local_app_data.join("AnthropicClaude");
+    let Ok(entries) = std::fs::read_dir(&anthropic_base) else {
+        return Vec::new();
+    };
+
+    let mut app_dirs: Vec<PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().starts_with("app-"))
+        .map(|e| e.path())
+        .collect();
+
+    app_dirs.sort_by(|a, b| modified_time(b).cmp(&modified_time(a)));
+    app_dirs
+}
+
+#[cfg(target_os = "windows")]
+fn find_appx_windows_claude_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    let command = r#"
+$packages = @()
+$packages += @(Get-AppxPackage -Name "Claude" -ErrorAction SilentlyContinue)
+$packages += @(Get-AppxPackage -Name "*Claude*" -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -match "Claude" -or $_.PackageFullName -match "Claude|Anthropic" })
+$packages = @($packages | Where-Object { $_ -and $_.PackageFullName } | Sort-Object PackageFullName -Unique)
+foreach ($package in ($packages | Sort-Object InstallDate -Descending)) {
+  if ($package.InstallLocation -and (Test-Path -LiteralPath $package.InstallLocation)) {
+    $package.InstallLocation
+  }
+}
+$fallback = @(Get-ChildItem "C:\Program Files\WindowsApps\*Claude*" -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+foreach ($dir in $fallback) { $dir.FullName }
+"#;
+
+    if let Ok(output) = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            command,
+        ])
+        .output()
+    {
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                paths.push(PathBuf::from(trimmed));
+            }
+        }
+    }
+
+    paths
+}
+
+#[cfg(target_os = "windows")]
+fn modified_time(path: &Path) -> std::time::SystemTime {
+    path.metadata()
+        .and_then(|m| m.modified())
+        .unwrap_or(std::time::UNIX_EPOCH)
+}
+
+#[cfg(target_os = "windows")]
+fn get_windows_claude_resources_path(claude_path: &Path) -> Option<PathBuf> {
+    let root = if claude_path.is_file() {
+        claude_path.parent()?
+    } else {
+        claude_path
+    };
+
+    for candidate in [
+        root.join("resources"),
+        root.join("app").join("resources"),
+    ] {
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn get_windows_claude_exe_path(claude_path: &Path) -> Option<PathBuf> {
+    let root = if claude_path.is_file() {
+        claude_path.parent()?
+    } else {
+        claude_path
+    };
+
+    for candidate in [
+        root.join("Claude.exe"),
+        root.join("claude.exe"),
+        root.join("app").join("Claude.exe"),
+        root.join("app").join("claude.exe"),
+    ] {
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
     None
 }
 
 /// Get Claude Desktop version from Info.plist (macOS) or executable metadata (Windows)
 pub fn get_claude_version(claude_path: &PathBuf) -> Option<String> {
-    if cfg!(target_os = "macos") {
+    #[cfg(target_os = "macos")]
+    {
         let plist_path = claude_path.join("Contents").join("Info.plist");
         if plist_path.exists() {
             // Use plutil to read version
@@ -114,10 +228,14 @@ pub fn get_claude_version(claude_path: &PathBuf) -> Option<String> {
                 return Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
             }
         }
-    } else if cfg!(target_os = "windows") {
-        // Try from appx manifest or just return path
-        if let Some(parent) = claude_path.parent() {
-            let manifest = parent.join("AppxManifest.xml");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        for manifest in [
+            claude_path.join("AppxManifest.xml"),
+            claude_path.join("app").join("AppxManifest.xml"),
+        ] {
             if manifest.exists() {
                 if let Ok(content) = std::fs::read_to_string(&manifest) {
                     let re = regex::Regex::new(r#"Version="([^"]+)""#).ok()?;
@@ -127,8 +245,43 @@ pub fn get_claude_version(claude_path: &PathBuf) -> Option<String> {
                 }
             }
         }
+
+        if let Some(name) = claude_path.file_name().and_then(|n| n.to_str()) {
+            if let Some(version) = name.strip_prefix("app-") {
+                if !version.is_empty() {
+                    return Some(version.to_string());
+                }
+            }
+        }
+
+        if let Some(exe_path) = get_windows_claude_exe_path(claude_path) {
+            let ps_path = ps_single_quote(&exe_path.to_string_lossy());
+            let command = format!("(Get-Item -LiteralPath {}).VersionInfo.ProductVersion", ps_path);
+            if let Ok(output) = std::process::Command::new("powershell.exe")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    &command,
+                ])
+                .output()
+            {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !version.is_empty() {
+                    return Some(version);
+                }
+            }
+        }
     }
+
     None
+}
+
+#[cfg(target_os = "windows")]
+fn ps_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 /// Get the app data/config path for Claude
@@ -147,7 +300,8 @@ pub fn get_app_data_path() -> Option<String> {
 
 /// Check if zh-CN patch is already installed
 pub fn check_zh_cn_from_claude(claude_path: &PathBuf) -> bool {
-    if cfg!(target_os = "macos") {
+    #[cfg(target_os = "macos")]
+    {
         let i18n_path = claude_path
             .join("Contents")
             .join("Resources")
@@ -155,13 +309,16 @@ pub fn check_zh_cn_from_claude(claude_path: &PathBuf) -> bool {
             .join("i18n")
             .join("zh-CN.json");
         return i18n_path.exists();
-    } else if cfg!(target_os = "windows") {
-        let resources = claude_path.join("resources");
-        if resources.exists() {
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(resources) = get_windows_claude_resources_path(claude_path) {
             let i18n_path = resources.join("ion-dist").join("i18n").join("zh-CN.json");
             return i18n_path.exists();
         }
     }
+
     false
 }
 
