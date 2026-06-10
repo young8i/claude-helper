@@ -5,7 +5,6 @@ mod localizer;
 mod updater;
 mod ccswitch;
 mod system_info;
-mod guide_images;
 
 fn main() {
     tauri::Builder::default()

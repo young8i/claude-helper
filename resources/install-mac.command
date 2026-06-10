@@ -30,7 +30,7 @@ try:
         f"https://api.github.com/repos/{repo}/releases/latest",
         headers={
             "Accept": "application/vnd.github+json",
-            "User-Agent": "claude-desktop-zh-cn-update-check",
+            "User-Agent": "claude-zh-helper-update-check",
         },
     )
     with urllib.request.urlopen(req, timeout=3) as response:

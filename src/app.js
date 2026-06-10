@@ -23,41 +23,105 @@ async function getTauriInvoke() {
   await refreshAll(invoke);
   bindEvents(invoke);
   // Auto-check for app updates on startup (silent, only notify if available)
-  checkAppUpdateSilent();
+  checkAppUpdateSilent(invoke);
 })();
 
 // ── App Auto-Update ──────────────────────────────────────
-async function checkAppUpdate(showUpToDate = false) {
-  if (!isTauri) return;
+async function checkAppUpdate(invoke, showUpToDate = false) {
+  if (!isTauri || !invoke) return;
+  const handledByUpdater = await checkTauriUpdater(showUpToDate);
+  if (handledByUpdater) return;
+
+  await checkReleaseUpdateFallback(invoke, showUpToDate);
+}
+
+async function checkTauriUpdater(showUpToDate = false) {
+  const info = $("#updateInfo");
   try {
-    // String concat prevents Vite from statically resolving this import
-    const updater = await import(/* @vite-ignore */ "@tauri-apps/" + "plugin-updater");
+    const updater = await import("@tauri-apps/plugin-updater");
     const update = await updater.check();
-    const info = $("#updateInfo");
+
     info.classList.remove("hidden");
+    info.classList.toggle("available", !!update);
+    info.classList.toggle("uptodate", !update && showUpToDate);
+
     if (update) {
-      info.innerHTML = `<div class="update-alert">🔔 发现新版本 v${update.version}</div><div class="update-detail">${update.body || ""}</div><div class="button-row" style="margin-top:8px;"><button class="btn btn-primary" id="btnDoUpdate">⬇️ 立即更新</button></div>`;
+      const notes = update.body ? `<div class="update-detail">${escapeHtml(update.body)}</div>` : "";
+      info.innerHTML = `
+        <div class="update-alert">🔔 发现新版本 v${escapeHtml(update.version || "")}</div>
+        ${notes}
+        <div class="button-row" style="margin-top:8px;">
+          <button class="btn btn-primary" id="btnDoUpdate">⬇️ 立即更新</button>
+        </div>`;
       $("#btnDoUpdate")?.addEventListener("click", async () => {
-        info.innerHTML = "⏳ 正在下载更新…";
-        await update.downloadAndInstall();
+        const btn = $("#btnDoUpdate");
+        btn.disabled = true;
+        btn.textContent = "⏳ 正在下载并安装…";
+        try {
+          await update.downloadAndInstall();
+          info.classList.remove("available");
+          info.classList.add("uptodate");
+          info.innerHTML = `<div class="update-ok">✅ 更新已安装，请重启应用完成更新。</div>`;
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = "⬇️ 立即更新";
+          info.insertAdjacentHTML(
+            "beforeend",
+            `<div class="update-detail">自动更新失败：${escapeHtml(e.message || String(e))}</div>`,
+          );
+        }
       });
     } else if (showUpToDate) {
       info.innerHTML = `<div class="update-ok">✅ 已是最新版本</div>`;
     } else {
       info.classList.add("hidden");
     }
+    return true;
+  } catch (e) {
+    console.warn("tauri updater failed, falling back to release check:", e);
+    return false;
+  }
+}
+
+async function checkReleaseUpdateFallback(invoke, showUpToDate = false) {
+  const info = $("#updateInfo");
+  try {
+    const update = await invoke("check_for_updates");
+    info.classList.remove("hidden");
+    info.classList.toggle("available", update.hasUpdate);
+    info.classList.toggle("uptodate", !update.hasUpdate && showUpToDate);
+
+    if (update.hasUpdate) {
+      info.innerHTML = `
+        <div class="update-alert">🔔 发现新版本 v${escapeHtml(update.latestVersion)}</div>
+        <div class="update-detail">当前版本 v${escapeHtml(update.currentVersion)}</div>
+        <div class="update-detail">自动更新清单暂不可用，已切换到手动下载。</div>
+        <div class="button-row" style="margin-top:8px;">
+          <button class="btn btn-primary" id="btnDoUpdate">⬇️ 打开下载页</button>
+        </div>
+        <div class="update-time">检查时间：${escapeHtml(update.checkTime || "")}</div>`;
+      $("#btnDoUpdate")?.addEventListener("click", () => {
+        invoke("open_url_in_browser", { url: update.releaseUrl });
+      });
+    } else if (showUpToDate) {
+      info.innerHTML = `
+        <div class="update-ok">✅ 已是最新版本</div>
+        <div class="update-time">检查时间：${escapeHtml(update.checkTime || "")}</div>`;
+    } else {
+      info.classList.add("hidden");
+    }
   } catch(e) {
     if (showUpToDate) {
-      const info = $("#updateInfo");
       info.classList.remove("hidden");
+      info.classList.remove("available", "uptodate");
       info.innerHTML = `⚠️ 检查更新失败: ${e.message || e}`;
     }
   }
 }
 
-async function checkAppUpdateSilent() {
+async function checkAppUpdateSilent(invoke) {
   // Wait a moment for the UI to settle, then check silently
-  setTimeout(() => checkAppUpdate(false), 3000);
+  setTimeout(() => checkAppUpdate(invoke, false), 3000);
 }
 
 // ── Refresh ──────────────────────────────────────────────
@@ -189,7 +253,7 @@ function bindEvents(invoke) {
 
   // Updates (manual)
   $("#btnCheckUpdate").addEventListener("click", async () => {
-    await checkAppUpdate(true);
+    await checkAppUpdate(invoke, true);
   });
 
   // cc-switch install
@@ -197,14 +261,23 @@ function bindEvents(invoke) {
     const btn = $("#btnCcswitchInstall"), res = $("#ccswitchResult");
     btn.disabled = true; btn.textContent = "⏳ 安装中…";
     res.classList.remove("hidden"); res.textContent = "⏳ 正在安装，可能需要几分钟；Windows 可能会弹出 UAC 授权…"; res.style.color = "var(--text-secondary)";
+    let installed = false;
     try {
       const msg = await invoke("install_ccswitch");
-      await sleep(1500);
-      await refreshAll(invoke);
-      res.textContent = msg; res.style.color = "var(--green)";
+      const cc = await refreshCcswitchStatus(invoke, 5);
+      installed = !!cc?.installed;
+      res.textContent = installed
+        ? msg
+        : `${msg}\n\n如果按钮未自动变为“已安装”，请从开始菜单启动 cc-switch 后再刷新检测。`;
+      res.style.color = "var(--green)";
     } catch(e) {
       res.textContent = "❌ " + e; res.style.color = "var(--red)";
-      await invoke("open_ccswitch_releases");
+      try { await invoke("open_ccswitch_releases"); } catch {}
+    } finally {
+      if (!installed) {
+        btn.disabled = false;
+        btn.textContent = "⚡ 一键安装";
+      }
     }
   });
 
@@ -221,15 +294,6 @@ function bindEvents(invoke) {
   // Config
   $("#btnOpenConfig").addEventListener("click", async () => {
     try { await invoke("open_config_file"); } catch(e) { alert("失败: " + e); }
-  });
-
-  // Help
-  $("#btnOpenHelpGroup").addEventListener("click", () =>
-    invoke("open_url_in_browser", { url: "https://javaht.github.io/claude-desktop-zh-cn/" })
-  );
-  $("#footerGithub").addEventListener("click", e => {
-    e.preventDefault();
-    invoke("open_url_in_browser", { url: "https://github.com/javaht/claude-desktop-zh-cn" });
   });
 
   // Modal
@@ -266,6 +330,21 @@ function openModal(title, html) {
 }
 function closeModal() { $("#guideModal").classList.add("hidden"); }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function refreshCcswitchStatus(invoke, attempts = 1) {
+  let latest = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      latest = await invoke("check_ccswitch_status");
+      updateCcswitchUI(latest);
+      if (latest.installed) return latest;
+    } catch (e) {
+      console.error("ccswitch refresh failed:", e);
+    }
+    if (i < attempts - 1) await sleep(1000);
+  }
+  return latest;
+}
 
 // ── Markdown ─────────────────────────────────────────────
 function renderMarkdown(md) {

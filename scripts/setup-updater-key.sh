@@ -1,36 +1,37 @@
 #!/bin/bash
-# Generate signing keypair for Tauri updater
-# Run this ONCE per project. Keep the private key SECRET.
+# Generate the signing keypair used by the Tauri updater.
+# Run this once per app identity and keep the private key secret.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HELPER_DIR="$(dirname "$SCRIPT_DIR")"
+KEY_PATH="$HOME/.tauri/claude-zh-helper.key"
 
 echo "🔑 Generating Tauri updater signing keys..."
 echo ""
 
-# Use npx tauri from project's local @tauri-apps/cli
 cd "$HELPER_DIR"
-npx tauri signer generate -w ~/.tauri/claude-zh-helper.key 2>&1 || {
+mkdir -p "$(dirname "$KEY_PATH")"
+npx tauri signer generate -w "$KEY_PATH" 2>&1 || {
   echo ""
   echo "❌ Key generation failed. Make sure dependencies are installed:"
   echo "   npm install"
   exit 1
 }
 
-PUBKEY=$(cat ~/.tauri/claude-zh-helper.key.pub 2>/dev/null || echo "")
-
+PUBKEY=$(cat "${KEY_PATH}.pub" 2>/dev/null || echo "")
 if [ -z "$PUBKEY" ]; then
-  echo "❌ Could not read public key"
+  echo "❌ Could not read public key: ${KEY_PATH}.pub"
   exit 1
 fi
 
 echo ""
 echo "✅ Keypair generated:"
-echo "   Private key: ~/.tauri/claude-zh-helper.key  ← KEEP SECRET"
-echo "   Public key:  ~/.tauri/claude-zh-helper.key.pub"
+echo "   Private key: $KEY_PATH"
+echo "   Public key:  ${KEY_PATH}.pub"
 echo ""
-echo "📋 Public key (add this to tauri.conf.json → plugins.updater.pubkey):"
+echo "📋 Public key for src-tauri/tauri.conf.json → plugins.updater.pubkey:"
 echo "   $PUBKEY"
 echo ""
-echo "⚙️  Replace 'PLACEHOLDER_RUN_tauri_signer_generate' in tauri.conf.json with this public key."
+echo "The release script reads $KEY_PATH automatically. If you use a different key,"
+echo "set TAURI_SIGNING_PRIVATE_KEY before running ./scripts/release.sh."

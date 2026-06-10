@@ -95,7 +95,7 @@ function Test-GitHubReleaseUpdate {
 
         $latestRelease = Invoke-RestMethod `
             -Uri "https://api.github.com/repos/$repo/releases/latest" `
-            -Headers @{ Accept = "application/vnd.github+json"; "User-Agent" = "claude-desktop-zh-cn-update-check" } `
+            -Headers @{ Accept = "application/vnd.github+json"; "User-Agent" = "claude-zh-helper-update-check" } `
             -TimeoutSec 3 `
             -ErrorAction Stop
         $latest = [string]$latestRelease.tag_name

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-const APP_REPO: &str = "javaht/claude-desktop-zh-cn";
+const APP_REPO: &str = "young8i/claude-releases";
 const GITHUB_API: &str = "https://api.github.com/repos";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

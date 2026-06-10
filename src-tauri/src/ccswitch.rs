@@ -210,11 +210,6 @@ fn get_version(install_path: &str) -> Option<String> {
 
     #[cfg(target_os = "windows")]
     {
-        if let Ok(out) = std::process::Command::new(install_path).arg("--version").output() {
-            let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !v.is_empty() { return Some(v); }
-        }
-
         let command = format!(
             "(Get-Item -LiteralPath {}).VersionInfo.ProductVersion",
             ps_single_quote(install_path),
@@ -241,6 +236,50 @@ fn get_version(install_path: &str) -> Option<String> {
 #[cfg(target_os = "windows")]
 fn ps_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+#[cfg(target_os = "windows")]
+fn run_powershell_with_timeout(
+    command: &str,
+    timeout: std::time::Duration,
+) -> Result<std::process::Output, String> {
+    let mut child = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            command,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("PowerShell 不可用: {}", e))?;
+
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                let status = child
+                    .wait()
+                    .map_err(|e| format!("无法读取 PowerShell 退出状态: {}", e))?;
+                return Ok(std::process::Output {
+                    status,
+                    stdout: Vec::new(),
+                    stderr: Vec::new(),
+                });
+            }
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!("安装命令超过 {} 秒仍未结束", timeout.as_secs()));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            Err(e) => return Err(format!("等待 PowerShell 结束失败: {}", e)),
+        }
+    }
 }
 
 pub fn run_one_click_install() -> Result<String, String> {
@@ -309,24 +348,27 @@ if ($null -ne $p.ExitCode) { exit $p.ExitCode }
 exit 0
 "#;
 
-        let out = std::process::Command::new("powershell.exe")
-            .args([
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                command,
-            ])
-            .output();
+        let out = run_powershell_with_timeout(command, std::time::Duration::from_secs(600));
 
         match out {
-            Ok(o) if o.status.success() => Ok("✅ cc-switch 安装成功！请在开始菜单或系统托盘中启动。".to_string()),
+            Ok(o) if o.status.success() || check_status().installed => {
+                Ok("✅ cc-switch 安装成功！请在开始菜单或系统托盘中启动。".to_string())
+            }
             Ok(o) => {
                 let stdout = String::from_utf8_lossy(&o.stdout);
                 let stderr = String::from_utf8_lossy(&o.stderr);
-                Err(format!("cc-switch 一键安装失败。请手动从 {} 下载 .msi 安装包。\n\n{}\n{}", CCSWITCH_RELEASES, stdout, stderr))
+                Err(format!(
+                    "cc-switch 一键安装失败（退出状态: {}）。请手动从 {} 下载 .msi 安装包。\n\n{}\n{}",
+                    o.status, CCSWITCH_RELEASES, stdout, stderr,
+                ))
             }
-            Err(e) => Err(format!("PowerShell 不可用，无法一键安装 cc-switch。请手动从 {} 下载。\n\n{}", CCSWITCH_RELEASES, e)),
+            Err(e) if check_status().installed => {
+                Ok("✅ cc-switch 已安装。安装器未正常退出，但已检测到安装结果。".to_string())
+            }
+            Err(e) => Err(format!(
+                "cc-switch 一键安装未完成。请手动从 {} 下载。\n\n{}",
+                CCSWITCH_RELEASES, e,
+            )),
         }
     }
 
@@ -338,11 +380,6 @@ pub fn get_config_guide() -> String {
     r##"# cc-switch 安装与配置教程
 
 cc-switch 是免费开源的 Claude Desktop / Claude Code 配置管理工具（[github.com/farion1231/cc-switch](https://github.com/farion1231/cc-switch)）。
-
-<div style="text-align:center;margin:16px 0">
-  <img src="https://raw.githubusercontent.com/javaht/claude-desktop-zh-cn/main/docs/images/claude-desktop-zh-cn-settings.png" style="max-width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1);" alt="Claude Desktop Settings" />
-  <p style="font-size:11px;color:var(--text-tertiary);">cc-switch 后台运行在系统托盘，管理面板类似如上配置界面</p>
-</div>
 
 ## 安装方式
 

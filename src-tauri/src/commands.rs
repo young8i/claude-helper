@@ -2,7 +2,6 @@ use crate::system_info;
 use crate::localizer::{self, LocalizeOptions, LocalizeResult};
 use crate::updater::{self, AppUpdateInfo};
 use crate::ccswitch;
-use crate::guide_images;
 
 // ── System & Localization ──────────────────────────────────
 
@@ -125,14 +124,8 @@ fn open_url(url: &str) -> Result<(), String> {
     Ok(())
 }
 
-// ── Built-in API Guide ────────────────────────────────────
-
-fn img(n: &str) -> String {
-    guide_images::get_img(n)
-}
-
 fn build_api_guide() -> String {
-    format!(r##"# Claude Desktop 第三方 API 配置教程
+    r##"# Claude Desktop 第三方 API 配置教程
 
 ---
 
@@ -140,19 +133,8 @@ fn build_api_guide() -> String {
 
 首次打开 Claude Desktop 时**不要登录**，按以下步骤操作：
 
-<div style="margin:12px 0">
-  <img src="{dev1}" style="max-width:100%;border-radius:8px;" alt="Help → Troubleshooting" />
-  <p style="font-size:11px;color:#999;margin-top:4px;">▲ 左上角菜单：Help → Troubleshooting → Enable Developer Mode</p>
-</div>
-
 1. **重要技巧**：未登录状态下菜单可能点不动——先鼠标点一下邮箱输入框，按 `Tab` 键跳到左上角菜单按钮，按回车打开
 2. 菜单路径：**Help → Troubleshooting → Enable Developer Mode**
-
-<div style="margin:12px 0">
-  <img src="{dev2}" style="max-width:100%;border-radius:8px;" alt="Enable 确认" />
-  <p style="font-size:11px;color:#999;margin-top:4px;">▲ 弹出确认框，点击 Enable</p>
-</div>
-
 3. 点击 **Enable** 确认
 4. 重启 Claude Desktop 生效
 
@@ -162,10 +144,7 @@ fn build_api_guide() -> String {
 
 重启后左上角会出现 **Developer** 菜单：
 
-<div style="margin:12px 0">
-  <img src="{cfg1}" style="max-width:100%;border-radius:8px;" alt="Configure Third-Party Inference" />
-  <p style="font-size:11px;color:#999;margin-top:4px;">▲ Developer → Configure Third-Party Inference 设置面板</p>
-</div>
+菜单路径：**Developer → Configure Third-Party Inference**
 
 配置字段说明：
 
@@ -177,28 +156,7 @@ fn build_api_guide() -> String {
 | Auth Scheme | x-api-key | 认证方式 |
 | Model List | `deepseek-chat` | 每行一个模型名 |
 
-<div style="margin:12px 0">
-  <img src="{cfg2}" style="max-width:100%;border-radius:8px;" alt="Gateway 配置" />
-  <p style="font-size:11px;color:#999;margin-top:4px;">▲ Gateway 模式配置详情</p>
-</div>
-
-点击 **Apply Locally** 保存：
-
-<div style="margin:12px 0">
-  <img src="{a1}" style="max-width:100%;border-radius:8px;" alt="Apply Locally" />
-  <p style="font-size:11px;color:#999;margin-top:4px;">▲ 点击 Apply Locally → 选择 Local 进入</p>
-</div>
-
-配置成功后即可使用自定义 API：
-
-<div style="margin:12px 0;display:flex;flex-wrap:wrap;gap:8px;">
-  <img src="{a2}" style="max-width:48%;border-radius:8px;" alt="效果1" />
-  <img src="{a3}" style="max-width:48%;border-radius:8px;" alt="效果2" />
-  <img src="{a4}" style="max-width:48%;border-radius:8px;" alt="效果3" />
-  <img src="{a5}" style="max-width:48%;border-radius:8px;" alt="效果4" />
-  <img src="{a6}" style="max-width:48%;border-radius:8px;" alt="效果5" />
-</div>
-<p style="font-size:11px;color:#999;">▲ 原帖中网友反馈的配置效果截图</p>
+填写后点击 **Apply Locally** 保存，选择 **Local** 进入，即可使用自定义 API。
 
 ---
 
@@ -245,9 +203,5 @@ fn build_api_guide() -> String {
 ---
 
 > 🔧 **cc-switch**：https://github.com/farion1231/cc-switch
-"##,
-    dev1=img("dev1"), dev2=img("dev2"),
-    cfg1=img("cfg1"), cfg2=img("cfg2"),
-    a1=img("a1"), a2=img("a2"), a3=img("a3"),
-    a4=img("a4"), a5=img("a5"), a6=img("a6"))
+"##.to_string()
 }

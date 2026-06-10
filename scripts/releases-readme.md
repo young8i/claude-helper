@@ -1,6 +1,6 @@
 # Claude 中文助手 — 公开发行仓库
 
-> 本仓库仅存放「Claude 中文助手」的构建产物和更新清单，供用户下载和自动更新使用。
+> 本仓库仅存放「Claude 中文助手」的构建产物和更新清单，供用户下载和应用内自动更新使用。
 
 ## 这是什么？
 
@@ -14,10 +14,10 @@
 
 ## 自动更新
 
-本仓库的 Releases 中的 `latest.json` 文件供应用内自动更新使用。用户无需手动访问此仓库。
+本仓库 Releases 中的 `latest.json` 和签名产物供应用内自动更新使用。每次发版必须同时上传安装包、updater 签名文件和 `latest.json`。
 
 ## 关于
 
 - 主仓库（源码）：private
 - 问题反馈：主仓库 Issues
-- 汉化包项目：[javaht/claude-desktop-zh-cn](https://github.com/javaht/claude-desktop-zh-cn)
+- 汉化资源：已内置在 Claude 中文助手安装包中
