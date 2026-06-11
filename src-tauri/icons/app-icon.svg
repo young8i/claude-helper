@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="128" y1="128" x2="896" y2="896" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F6F7B"/>
+      <stop offset="0.48" stop-color="#2556A5"/>
+      <stop offset="1" stop-color="#F05A3C"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="34%" cy="28%" r="70%">
+      <stop offset="0" stop-color="#FFE08A" stop-opacity="0.9"/>
+      <stop offset="0.42" stop-color="#FFE08A" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#FFE08A" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="clip">
+      <rect x="64" y="64" width="896" height="896" rx="208"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    <rect x="64" y="64" width="896" height="896" fill="url(#bg)"/>
+    <rect x="64" y="64" width="896" height="896" fill="url(#glow)"/>
+    <path d="M112 738C258 638 397 621 529 687C662 752 789 732 944 609V960H112V738Z" fill="#062E35" opacity="0.18"/>
+    <path d="M746 130C805 179 843 238 860 307C881 390 858 471 792 548" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round" opacity="0.34"/>
+  </g>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="none" stroke="#FFFFFF" stroke-width="22" opacity="0.18"/>
+  <g fill="none" stroke="#FFF8EB" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="282" y="308" width="460" height="372" rx="44" stroke-width="88"/>
+    <path d="M512 254V784" stroke-width="88"/>
+    <path d="M326 494H698" stroke-width="88"/>
+  </g>
+</svg>

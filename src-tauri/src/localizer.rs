@@ -83,7 +83,11 @@ pub fn run_install_macos(lang_code: &str, mode: &str) -> LocalizeResult {
 
 /// Run the localization install (Windows)
 #[cfg(target_os = "windows")]
-pub fn run_install_windows(lang_code: &str, mode: &str) -> LocalizeResult {
+pub fn run_install_windows(
+    lang_code: &str,
+    mode: &str,
+    resource_hint: Option<&std::path::Path>,
+) -> LocalizeResult {
     let mut steps: Vec<String> = Vec::new();
 
     // Map mode to script parameter
@@ -98,7 +102,7 @@ pub fn run_install_windows(lang_code: &str, mode: &str) -> LocalizeResult {
     steps.push("准备 PowerShell 安装环境...".to_string());
     steps.push(format!("执行安装脚本 (语言: {}, 模式: {})...", lang_code, mode));
 
-    match run_elevated_windows_installer(action, lang_code, Some(patch_mode)) {
+    match run_elevated_windows_installer(action, lang_code, Some(patch_mode), resource_hint) {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -183,13 +187,13 @@ pub fn run_uninstall_macos() -> LocalizeResult {
 
 /// Run the uninstall/restore (Windows)
 #[cfg(target_os = "windows")]
-pub fn run_uninstall_windows() -> LocalizeResult {
+pub fn run_uninstall_windows(resource_hint: Option<&std::path::Path>) -> LocalizeResult {
     let mut steps: Vec<String> = Vec::new();
 
     steps.push("准备恢复原始版本...".to_string());
     steps.push("准备 PowerShell 卸载环境...".to_string());
 
-    match run_elevated_windows_installer("uninstall", "zh-CN", None) {
+    match run_elevated_windows_installer("uninstall", "zh-CN", None, resource_hint) {
         Ok(output) => {
             if output.status.success() {
                 steps.push("恢复完成！".to_string());
@@ -221,9 +225,24 @@ fn run_elevated_windows_installer(
     action: &str,
     lang_code: &str,
     patch_mode: Option<&str>,
+    resource_hint: Option<&std::path::Path>,
 ) -> Result<std::process::Output, String> {
-    let project_root = find_project_root()
-        .ok_or_else(|| "未找到打包资源目录：缺少 resources 或 scripts/install_windows.ps1".to_string())?;
+    let candidates = project_root_candidates(resource_hint);
+    let project_root = candidates
+        .iter()
+        .find(|path| is_project_root(path))
+        .cloned()
+        .ok_or_else(|| {
+            let checked = candidates
+                .iter()
+                .map(|p| format!("  - {}", p.display()))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                "未找到打包资源目录：缺少 resources 或 scripts/install_windows.ps1\n已检查路径：\n{}",
+                checked,
+            )
+        })?;
     let staged_root = stage_windows_installer(&project_root)?;
     let script_path = staged_root.join("scripts").join("install_windows.ps1");
 
@@ -273,7 +292,7 @@ fn run_elevated_windows_installer(
 
 #[cfg(target_os = "windows")]
 fn stage_windows_installer(project_root: &std::path::Path) -> Result<std::path::PathBuf, String> {
-    let staged_root = std::env::temp_dir().join("ClaudeDesktopZhCnInstaller");
+    let staged_root = std::env::temp_dir().join("ClaudeZhHelperInstaller");
     let staged_scripts = staged_root.join("scripts");
     let staged_resources = staged_root.join("resources");
 
@@ -343,39 +362,59 @@ fn ps_single_quote(value: &str) -> String {
 }
 
 fn find_project_root() -> Option<std::path::PathBuf> {
-    project_root_candidates()
+    project_root_candidates(None)
         .into_iter()
         .find(|path| is_project_root(path))
 }
 
-fn project_root_candidates() -> Vec<std::path::PathBuf> {
+fn project_root_candidates(resource_hint: Option<&std::path::Path>) -> Vec<std::path::PathBuf> {
     let mut candidates = Vec::new();
 
-    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    candidates.push(manifest.clone());
-    if let Some(parent) = manifest.parent() {
-        candidates.push(parent.to_path_buf());
-        if let Some(grandparent) = parent.parent() {
-            candidates.push(grandparent.to_path_buf());
-        }
+    if let Some(resource_dir) = resource_hint {
+        push_path_variants(&mut candidates, resource_dir);
     }
+
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    push_path_variants(&mut candidates, &manifest);
 
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
-            candidates.push(parent.to_path_buf());
-            candidates.push(parent.join("resources"));
-            if let Some(grandparent) = parent.parent() {
-                candidates.push(grandparent.to_path_buf());
-            }
+            push_path_variants(&mut candidates, parent);
         }
     }
 
     if let Ok(current_dir) = std::env::current_dir() {
-        candidates.push(current_dir.clone());
-        candidates.push(current_dir.join("resources"));
+        push_path_variants(&mut candidates, &current_dir);
     }
 
     candidates
+}
+
+fn push_path_variants(candidates: &mut Vec<std::path::PathBuf>, path: &std::path::Path) {
+    push_candidate(candidates, path.to_path_buf());
+    push_candidate(candidates, path.join("_up_"));
+    push_candidate(candidates, path.join("resources"));
+    push_candidate(candidates, path.join("resources").join("_up_"));
+
+    if let Some(parent) = path.parent() {
+        push_candidate(candidates, parent.to_path_buf());
+        push_candidate(candidates, parent.join("_up_"));
+        push_candidate(candidates, parent.join("resources"));
+        push_candidate(candidates, parent.join("resources").join("_up_"));
+
+        if let Some(grandparent) = parent.parent() {
+            push_candidate(candidates, grandparent.to_path_buf());
+            push_candidate(candidates, grandparent.join("_up_"));
+            push_candidate(candidates, grandparent.join("resources"));
+            push_candidate(candidates, grandparent.join("resources").join("_up_"));
+        }
+    }
+}
+
+fn push_candidate(candidates: &mut Vec<std::path::PathBuf>, path: std::path::PathBuf) {
+    if !candidates.iter().any(|candidate| candidate == &path) {
+        candidates.push(path);
+    }
 }
 
 fn is_project_root(path: &std::path::Path) -> bool {
@@ -384,7 +423,7 @@ fn is_project_root(path: &std::path::Path) -> bool {
 }
 
 fn find_macos_installer_root() -> Option<std::path::PathBuf> {
-    project_root_candidates()
+    project_root_candidates(None)
         .into_iter()
         .find(|path| {
             path.join("install-mac.command").exists()

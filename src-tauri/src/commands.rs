@@ -19,7 +19,10 @@ pub async fn check_zh_cn_status() -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn install_localization(options: LocalizeOptions) -> Result<LocalizeResult, String> {
+pub async fn install_localization(
+    _app: tauri::AppHandle,
+    options: LocalizeOptions,
+) -> Result<LocalizeResult, String> {
     if !localizer::validate_lang_code(&options.lang_code) {
         return Err(format!("不支持的语言代码: {}", options.lang_code));
     }
@@ -29,19 +32,35 @@ pub async fn install_localization(options: LocalizeOptions) -> Result<LocalizeRe
     #[cfg(target_os = "macos")]
     { Ok(localizer::run_install_macos(&options.lang_code, &options.mode)) }
     #[cfg(target_os = "windows")]
-    { Ok(localizer::run_install_windows(&options.lang_code, &options.mode)) }
+    {
+        let resource_dir = app_resource_dir(&_app);
+        Ok(localizer::run_install_windows(
+            &options.lang_code,
+            &options.mode,
+            resource_dir.as_deref(),
+        ))
+    }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     { Err("当前操作系统不受支持".to_string()) }
 }
 
 #[tauri::command]
-pub async fn uninstall_localization() -> Result<LocalizeResult, String> {
+pub async fn uninstall_localization(_app: tauri::AppHandle) -> Result<LocalizeResult, String> {
     #[cfg(target_os = "macos")]
     { Ok(localizer::run_uninstall_macos()) }
     #[cfg(target_os = "windows")]
-    { Ok(localizer::run_uninstall_windows()) }
+    {
+        let resource_dir = app_resource_dir(&_app);
+        Ok(localizer::run_uninstall_windows(resource_dir.as_deref()))
+    }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     { Err("当前操作系统不受支持".to_string()) }
+}
+
+#[cfg(target_os = "windows")]
+fn app_resource_dir(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    app.path().resource_dir().ok()
 }
 
 // ── Updates ─────────────────────────────────────────────────

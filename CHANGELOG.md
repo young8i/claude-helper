@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.4 (2026-06-11)
+
+### 修复
+
+- 修复 Windows 打包版安装中文补丁时找不到 `resources` 或 `scripts/install_windows.ps1` 的问题。
+- 更换应用图标，并补充 macOS `icns` 图标资源。
+
 ## v1.0.0 (2026-06-06)
 
 ### ✨ 初始版本
