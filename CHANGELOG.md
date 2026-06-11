@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.5 (2026-06-11)
+
+### 修复
+
+- 补齐新版 Claude Cowork 菜单项 `Free Up Cowork Disk Space…` 的中文翻译，避免 Windows 安装补丁后触发 `MISSING_TRANSLATION`。
+
 ## v1.1.4 (2026-06-11)
 
 ### 修复
