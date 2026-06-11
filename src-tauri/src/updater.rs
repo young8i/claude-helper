@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-const APP_REPO: &str = "young8i/claude-releases";
+const DEFAULT_APP_REPO: &str = "young8i/claude-releases";
 const GITHUB_API: &str = "https://api.github.com/repos";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -10,13 +10,20 @@ pub struct AppUpdateInfo {
     pub current_version: String,
     pub latest_version: String,
     pub release_url: String,
+    pub download_url: Option<String>,
     pub check_time: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReleaseConfig {
+    repo: Option<String>,
+    download_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct GitHubRelease {
     tag_name: String,
-    html_url: String,
 }
 
 fn parse_ver(v: &str) -> Vec<u32> {
@@ -38,8 +45,28 @@ pub fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+fn release_config() -> ReleaseConfig {
+    serde_json::from_str(include_str!("../../resources/release.json")).unwrap_or_default()
+}
+
+fn configured_download_url(config: &ReleaseConfig) -> Option<String> {
+    config
+        .download_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+}
+
 pub async fn check_app_update() -> Result<AppUpdateInfo, String> {
     let current = get_app_version();
+    let config = release_config();
+    let repo = config
+        .repo
+        .as_deref()
+        .map(str::trim)
+        .filter(|repo| !repo.is_empty())
+        .unwrap_or(DEFAULT_APP_REPO);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
@@ -47,7 +74,7 @@ pub async fn check_app_update() -> Result<AppUpdateInfo, String> {
         .map_err(|e| format!("网络错误: {}", e))?;
 
     let resp = client
-        .get(format!("{}/{}/releases/latest", GITHUB_API, APP_REPO))
+        .get(format!("{}/{}/releases/latest", GITHUB_API, repo))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "claude-zh-helper")
         .send().await.map_err(|e| format!("请求失败: {}", e))?;
@@ -58,6 +85,7 @@ pub async fn check_app_update() -> Result<AppUpdateInfo, String> {
 
     let release: GitHubRelease = resp.json().await.map_err(|e| format!("解析失败: {}", e))?;
     let latest = release.tag_name.trim_start_matches('v').to_string();
+    let download_url = configured_download_url(&config);
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
@@ -74,7 +102,8 @@ pub async fn check_app_update() -> Result<AppUpdateInfo, String> {
         has_update: is_newer(&latest, &current),
         current_version: current,
         latest_version: latest,
-        release_url: release.html_url,
+        release_url: download_url.clone().unwrap_or_default(),
+        download_url,
         check_time,
     })
 }

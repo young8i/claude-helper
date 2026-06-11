@@ -38,54 +38,7 @@ async function checkAppUpdate(invoke, showUpToDate = false) {
     return;
   }
 
-  const handledByUpdater = await checkTauriUpdater(releaseUpdate);
-  if (handledByUpdater) return;
-
-  renderReleaseUpdateFallback(invoke, releaseUpdate);
-}
-
-async function checkTauriUpdater(releaseUpdate) {
-  const info = $("#updateInfo");
-  try {
-    const updater = await import("@tauri-apps/plugin-updater");
-    const update = await updater.check();
-
-    if (!update) return false;
-
-    info.classList.remove("hidden", "uptodate");
-    info.classList.add("available");
-
-    const notes = update.body ? `<div class="update-detail">${escapeHtml(update.body)}</div>` : "";
-    info.innerHTML = `
-      <div class="update-alert">🔔 发现新版本 v${escapeHtml(update.version || releaseUpdate.latestVersion || "")}</div>
-      <div class="update-detail">当前版本 v${escapeHtml(releaseUpdate.currentVersion)}</div>
-      ${notes}
-      <div class="button-row" style="margin-top:8px;">
-        <button class="btn btn-primary" id="btnDoUpdate">⬇️ 立即更新</button>
-      </div>`;
-    $("#btnDoUpdate")?.addEventListener("click", async () => {
-      const btn = $("#btnDoUpdate");
-      btn.disabled = true;
-      btn.textContent = "⏳ 正在下载并安装…";
-      try {
-        await update.downloadAndInstall();
-        info.classList.remove("available");
-        info.classList.add("uptodate");
-        info.innerHTML = `<div class="update-ok">✅ 更新已安装，请重启应用完成更新。</div>`;
-      } catch (e) {
-        btn.disabled = false;
-        btn.textContent = "⬇️ 立即更新";
-        info.insertAdjacentHTML(
-          "beforeend",
-          `<div class="update-detail">自动更新失败：${escapeHtml(e.message || String(e))}</div>`,
-        );
-      }
-    });
-    return true;
-  } catch (e) {
-    console.warn("tauri updater manifest unavailable, falling back to release download:", e);
-    return false;
-  }
+  renderNetdiskUpdate(invoke, releaseUpdate);
 }
 
 async function fetchReleaseUpdate(invoke, showErrors = false) {
@@ -102,21 +55,33 @@ async function fetchReleaseUpdate(invoke, showErrors = false) {
   }
 }
 
-function renderReleaseUpdateFallback(invoke, update) {
+function renderNetdiskUpdate(invoke, update) {
   const info = $("#updateInfo");
+  const downloadUrl = (update.downloadUrl || "").trim();
+
   info.classList.remove("hidden", "uptodate");
   info.classList.add("available");
+
+  if (downloadUrl) {
+    info.innerHTML = `
+      <div class="update-alert">🔔 发现新版本 v${escapeHtml(update.latestVersion)}</div>
+      <div class="update-detail">当前版本 v${escapeHtml(update.currentVersion)}</div>
+      <div class="update-detail">请通过网盘下载最新安装包。</div>
+      <div class="button-row" style="margin-top:8px;">
+        <button class="btn btn-primary" id="btnDoUpdate">⬇️ 打开网盘下载</button>
+      </div>
+      <div class="update-time">检查时间：${escapeHtml(update.checkTime || "")}</div>`;
+    $("#btnDoUpdate")?.addEventListener("click", () => {
+      invoke("open_url_in_browser", { url: downloadUrl });
+    });
+    return;
+  }
+
   info.innerHTML = `
     <div class="update-alert">🔔 发现新版本 v${escapeHtml(update.latestVersion)}</div>
     <div class="update-detail">当前版本 v${escapeHtml(update.currentVersion)}</div>
-    <div class="update-detail">自动更新安装包暂不可用，请打开下载页更新。</div>
-    <div class="button-row" style="margin-top:8px;">
-      <button class="btn btn-primary" id="btnDoUpdate">⬇️ 打开下载页</button>
-    </div>
+    <div class="update-detail">未配置网盘下载链接，请联系商家获取最新版本。</div>
     <div class="update-time">检查时间：${escapeHtml(update.checkTime || "")}</div>`;
-  $("#btnDoUpdate")?.addEventListener("click", () => {
-    invoke("open_url_in_browser", { url: update.releaseUrl });
-  });
 }
 
 function renderNoUpdate(update, showUpToDate) {
