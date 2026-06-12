@@ -20,8 +20,8 @@ fn main() {
             commands::install_ccswitch,
             commands::get_ccswitch_guide,
             commands::get_api_guide,
+            commands::get_quick_links,
             commands::open_ccswitch_site,
-            commands::open_ccswitch_releases,
             commands::open_config_file,
             commands::open_url_in_browser,
         ])

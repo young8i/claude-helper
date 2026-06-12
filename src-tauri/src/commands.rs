@@ -99,6 +99,40 @@ pub async fn get_api_guide() -> Result<String, String> {
     Ok(build_api_guide())
 }
 
+#[tauri::command]
+pub async fn get_quick_links() -> Result<serde_json::Value, String> {
+    let config: serde_json::Value =
+        serde_json::from_str(include_str!("../../resources/release.json")).unwrap_or_default();
+    let links = config
+        .get("links")
+        .and_then(|value| value.as_object());
+
+    let get_link = |key: &str| -> String {
+        links
+            .and_then(|items| items.get(key))
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_default()
+    };
+
+    let official = {
+        let configured = get_link("claudeDesktopOfficialUrl");
+        if configured.is_empty() {
+            "https://claude.ai/download".to_string()
+        } else {
+            configured
+        }
+    };
+
+    Ok(serde_json::json!({
+        "claudeDesktopOfficialUrl": official,
+        "claudeDesktopDownloadUrl": get_link("claudeDesktopDownloadUrl"),
+        "ccswitchDownloadUrl": get_link("ccswitchDownloadUrl"),
+    }))
+}
+
 // ── URL / file openers ─────────────────────────────────────
 
 #[tauri::command]
@@ -109,11 +143,6 @@ pub async fn open_url_in_browser(url: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn open_ccswitch_site() -> Result<(), String> {
     open_url("https://ccswitch.io")
-}
-
-#[tauri::command]
-pub async fn open_ccswitch_releases() -> Result<(), String> {
-    open_url("https://github.com/farion1231/cc-switch/releases")
 }
 
 #[tauri::command]
@@ -145,6 +174,8 @@ fn open_url(url: &str) -> Result<(), String> {
 
 fn build_api_guide() -> String {
     r##"# Claude Desktop 第三方 API 配置教程
+
+> 使用第三方 API 前请先读完整流程。如果你使用 OpenRouter、中转服务或多模型配置，建议先安装并使用 cc-switch。
 
 ---
 

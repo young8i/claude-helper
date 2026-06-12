@@ -1,5 +1,10 @@
 {
   "repo": "young8i/claude-releases",
   "release": "1.1.8",
-  "downloadUrl": ""
+  "downloadUrl": "",
+  "links": {
+    "claudeDesktopOfficialUrl": "https://claude.ai/download",
+    "claudeDesktopDownloadUrl": "",
+    "ccswitchDownloadUrl": ""
+  }
 }

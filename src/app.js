@@ -4,6 +4,11 @@
 const $ = (s) => document.querySelector(s);
 
 let isTauri = false;
+let quickLinks = {
+  claudeDesktopOfficialUrl: "https://claude.ai/download",
+  claudeDesktopDownloadUrl: "",
+  ccswitchDownloadUrl: "",
+};
 
 // ── Detect Tauri ─────────────────────────────────────────
 async function getTauriInvoke() {
@@ -123,12 +128,21 @@ async function refreshAll(invoke) {
   try {
     const v = await invoke("get_versions");
     $("#verApp").textContent = `v${v.app}`;
+    $("#footerVersion").textContent = `Claude 中文助手 v${v.app}`;
   } catch (e) {
     console.error("version failed:", e);
     $("#verApp").textContent = "检测失败";
   }
 
-  // 3) cc-switch
+  // 3) Quick links
+  try {
+    const links = await invoke("get_quick_links");
+    quickLinks = { ...quickLinks, ...links };
+  } catch (e) {
+    console.error("quick links failed:", e);
+  }
+
+  // 4) cc-switch
   try {
     const cc = await invoke("check_ccswitch_status");
     updateCcswitchUI(cc);
@@ -138,7 +152,7 @@ async function refreshAll(invoke) {
     $("#ccswitchStatus").textContent = "检测失败";
   }
 
-  // 4) API Guide (load inline)
+  // 5) API Guide (load inline)
   try {
     const guide = await invoke("get_api_guide");
     $("#apiGuide").innerHTML = renderMarkdown(guide);
@@ -250,8 +264,12 @@ function bindEvents(invoke) {
         : `${msg}\n\n如果按钮未自动变为“已安装”，请从开始菜单启动 cc-switch 后再刷新检测。`;
       res.style.color = "var(--green)";
     } catch(e) {
-      res.textContent = "❌ " + e; res.style.color = "var(--red)";
-      try { await invoke("open_ccswitch_releases"); } catch {}
+      console.error("cc-switch install failed:", e);
+      const hint = quickLinks.ccswitchDownloadUrl
+        ? "请使用右侧快速入口中的 cc-switch 网盘下载。"
+        : "cc-switch 网盘下载地址暂未配置，请联系商家获取。";
+      res.textContent = `❌ cc-switch 一键安装未完成。\n\n${hint}`;
+      res.style.color = "var(--red)";
     } finally {
       if (!installed) {
         btn.disabled = false;
@@ -268,11 +286,16 @@ function bindEvents(invoke) {
 
   // cc-switch site
   $("#btnCcswitchSite").addEventListener("click", () => invoke("open_ccswitch_site"));
-  $("#btnCcswitchSite2").addEventListener("click", () => invoke("open_ccswitch_site"));
 
-  // Config
-  $("#btnOpenConfig").addEventListener("click", async () => {
-    try { await invoke("open_config_file"); } catch(e) { alert("失败: " + e); }
+  // Quick links
+  $("#btnClaudeDesktopOfficial").addEventListener("click", () => {
+    openConfiguredLink(invoke, quickLinks.claudeDesktopOfficialUrl, "Claude 桌面端官网");
+  });
+  $("#btnClaudeDesktopNetdisk").addEventListener("click", () => {
+    openConfiguredLink(invoke, quickLinks.claudeDesktopDownloadUrl, "Claude 桌面端网盘下载地址");
+  });
+  $("#btnCcswitchNetdisk").addEventListener("click", () => {
+    openConfiguredLink(invoke, quickLinks.ccswitchDownloadUrl, "cc-switch 网盘下载地址");
   });
 
   // Modal
@@ -309,6 +332,22 @@ function openModal(title, html) {
 }
 function closeModal() { $("#guideModal").classList.add("hidden"); }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function openConfiguredLink(invoke, url, label) {
+  const target = (url || "").trim();
+  if (!target) {
+    alert(`${label}暂未配置，请联系商家获取。`);
+    return;
+  }
+
+  if (invoke) {
+    invoke("open_url_in_browser", { url: target })
+      .catch(e => alert("打开失败: " + (e.message || e)));
+    return;
+  }
+
+  window.open(target, "_blank", "noopener");
+}
 
 async function refreshCcswitchStatus(invoke, attempts = 1) {
   let latest = null;

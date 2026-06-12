@@ -126,10 +126,15 @@
       <!-- Right Column: Guides -->
       <section class="panel guides-panel">
         <!-- API Guide -->
-        <div class="card guide-card">
+        <div class="card guide-card api-guide-card">
           <div class="card-header">
             <span class="card-icon">📖</span>
             <span>第三方 API 配置教程</span>
+            <span class="card-badge">建议先读</span>
+          </div>
+          <div class="guide-priority">
+            <strong>使用第三方 API 前请先阅读本教程。</strong>
+            <span>如果你使用 OpenRouter、中转服务或多模型配置，建议先安装 cc-switch，再按教程配置。</span>
           </div>
           <div class="card-body guide-content" id="apiGuide">
             <p>加载中…</p>
@@ -143,14 +148,15 @@
             <span>快速入口</span>
           </div>
           <div class="card-body">
-            <div class="button-row">
-              <button class="btn btn-secondary" id="btnOpenConfig">
-                📝 打开 config.json
+            <div class="quick-links">
+              <button class="btn btn-secondary" id="btnClaudeDesktopOfficial">
+                🌐 Claude 桌面端官网
               </button>
-            </div>
-            <div class="button-row" style="margin-top: 8px;">
-              <button class="btn btn-secondary" id="btnCcswitchSite2">
-                🔧 cc-switch 官网
+              <button class="btn btn-secondary" id="btnClaudeDesktopNetdisk">
+                ⬇️ Claude 桌面端网盘下载
+              </button>
+              <button class="btn btn-secondary" id="btnCcswitchNetdisk">
+                ⬇️ cc-switch 网盘下载
               </button>
             </div>
           </div>
@@ -160,7 +166,7 @@
 
     <!-- Footer -->
     <footer class="app-footer">
-      <span>Claude 中文助手 v1.1.3</span>
+      <span id="footerVersion">Claude 中文助手</span>
       <span class="footer-divider">·</span>
       <span>macOS &amp; Windows</span>
     </footer>
