@@ -27,29 +27,26 @@ pub fn validate_mode(mode: &str) -> bool {
 
 /// Run the localization install (macOS)
 #[cfg(target_os = "macos")]
-pub fn run_install_macos(lang_code: &str, mode: &str) -> LocalizeResult {
-    use std::process::Command;
-
+pub fn run_install_macos(
+    lang_code: &str,
+    mode: &str,
+    resource_hint: Option<&std::path::Path>,
+) -> LocalizeResult {
     let mut steps: Vec<String> = Vec::new();
-    let resources_dir = get_resources_dir();
 
     // Step 1: Check if running with privileges
     steps.push("检查系统权限...".to_string());
 
-    // We'll use osascript to request admin privileges and run the command script
     let skip_asar = if mode == "safe" { "1" } else { "0" };
-
-    let script = format!(
-        r#"do shell script "cd '{}' && CLAUDE_ACTION='install' CLAUDE_LANG='{}' CLAUDE_SKIP_ASAR_PATCH='{}' CLAUDE_SKIP_UPDATE_CHECK='1' bash install-mac.command < /dev/null" with administrator privileges"#,
-        resources_dir, lang_code, skip_asar
-    );
 
     steps.push(format!("执行安装脚本 (语言: {}, 模式: {})...", lang_code, mode));
 
-    match Command::new("osascript")
-        .args(["-e", &script])
-        .output()
-    {
+    match run_elevated_macos_installer(
+        "install",
+        Some(lang_code),
+        Some(skip_asar),
+        resource_hint,
+    ) {
         Ok(output) => {
             let combined = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
             let succeeded = output.status.success() || combined.contains("Done.") || combined.contains("Backup kept at");
@@ -139,23 +136,12 @@ pub fn run_install_windows(
 
 /// Run the uninstall/restore
 #[cfg(target_os = "macos")]
-pub fn run_uninstall_macos() -> LocalizeResult {
-    use std::process::Command;
-
+pub fn run_uninstall_macos(resource_hint: Option<&std::path::Path>) -> LocalizeResult {
     let mut steps: Vec<String> = Vec::new();
-    let resources_dir = get_resources_dir();
 
     steps.push("准备恢复原始版本...".to_string());
 
-    let script = format!(
-        r#"do shell script "cd '{}' && CLAUDE_ACTION='restore' bash install-mac.command < /dev/null" with administrator privileges"#,
-        resources_dir
-    );
-
-    match Command::new("osascript")
-        .args(["-e", &script])
-        .output()
-    {
+    match run_elevated_macos_installer("restore", None, None, resource_hint) {
         Ok(output) => {
             let combined = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
             let succeeded = output.status.success() || combined.contains("Done.") || combined.contains("Restored from backup");
@@ -218,6 +204,153 @@ pub fn run_uninstall_windows(resource_hint: Option<&std::path::Path>) -> Localiz
             }
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+struct MacInstallerSource {
+    installer: std::path::PathBuf,
+    scripts: std::path::PathBuf,
+    resources: std::path::PathBuf,
+}
+
+#[cfg(target_os = "macos")]
+fn run_elevated_macos_installer(
+    action: &str,
+    lang_code: Option<&str>,
+    skip_asar: Option<&str>,
+    resource_hint: Option<&std::path::Path>,
+) -> Result<std::process::Output, String> {
+    let source = find_macos_installer_source(resource_hint).ok_or_else(|| {
+        let checked = project_root_candidates(resource_hint)
+            .iter()
+            .map(|p| format!("  - {}", p.display()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "未找到 macOS 打包资源目录：缺少 install-mac.command、resources/release.json 或 scripts/patch_claude_zh_cn.py\n已检查路径：\n{}",
+            checked,
+        )
+    })?;
+    let staged_root = stage_macos_installer(&source)?;
+
+    let mut shell_command = format!(
+        "cd {} && CLAUDE_ACTION={} CLAUDE_ZH_SKIP_UPDATE_CHECK='1'",
+        sh_quote(&staged_root.to_string_lossy()),
+        sh_quote(action),
+    );
+
+    if let Some(lang) = lang_code {
+        shell_command.push_str(&format!(" CLAUDE_LANG={}", sh_quote(lang)));
+    }
+    if let Some(skip) = skip_asar {
+        shell_command.push_str(&format!(" CLAUDE_SKIP_ASAR_PATCH={}", sh_quote(skip)));
+    }
+    shell_command.push_str(" bash ./install-mac.command < /dev/null");
+
+    let script = format!(
+        "do shell script {} with administrator privileges",
+        applescript_quote(&shell_command),
+    );
+
+    std::process::Command::new("osascript")
+        .args(["-e", &script])
+        .output()
+        .map_err(|e| format!("无法启动 osascript: {}", e))
+}
+
+#[cfg(target_os = "macos")]
+fn find_macos_installer_source(
+    resource_hint: Option<&std::path::Path>,
+) -> Option<MacInstallerSource> {
+    for root in project_root_candidates(resource_hint) {
+        let layouts = [
+            (
+                root.join("install-mac.command"),
+                root.join("scripts"),
+                root.join("resources"),
+            ),
+            (
+                root.join("resources").join("install-mac.command"),
+                root.join("scripts"),
+                root.join("resources"),
+            ),
+        ];
+
+        for (installer, scripts, resources) in layouts {
+            if is_macos_installer_layout(&installer, &scripts, &resources) {
+                return Some(MacInstallerSource {
+                    installer,
+                    scripts,
+                    resources,
+                });
+            }
+        }
+
+        if let Some(parent) = root.parent() {
+            let installer = root.join("install-mac.command");
+            let scripts = parent.join("scripts");
+            let resources = root.clone();
+            if is_macos_installer_layout(&installer, &scripts, &resources) {
+                return Some(MacInstallerSource {
+                    installer,
+                    scripts,
+                    resources,
+                });
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn is_macos_installer_layout(
+    installer: &std::path::Path,
+    scripts: &std::path::Path,
+    resources: &std::path::Path,
+) -> bool {
+    installer.exists()
+        && scripts.join("patch_claude_zh_cn.py").exists()
+        && resources.join("release.json").exists()
+}
+
+#[cfg(target_os = "macos")]
+fn stage_macos_installer(source: &MacInstallerSource) -> Result<std::path::PathBuf, String> {
+    let staged_root = std::env::temp_dir().join("ClaudeZhHelperMacInstaller");
+    let staged_scripts = staged_root.join("scripts");
+    let staged_resources = staged_root.join("resources");
+
+    if staged_root.exists() {
+        std::fs::remove_dir_all(&staged_root)
+            .map_err(|e| format!("无法清理 macOS 临时安装目录 {}: {}", staged_root.display(), e))?;
+    }
+
+    std::fs::create_dir_all(&staged_scripts)
+        .map_err(|e| format!("无法创建 macOS 临时 scripts 目录: {}", e))?;
+    std::fs::create_dir_all(&staged_resources)
+        .map_err(|e| format!("无法创建 macOS 临时 resources 目录: {}", e))?;
+
+    std::fs::copy(&source.installer, staged_root.join("install-mac.command")).map_err(|e| {
+        format!(
+            "无法复制 macOS 安装脚本 {}: {}",
+            source.installer.display(),
+            e,
+        )
+    })?;
+    copy_dir_contents(&source.scripts, &staged_scripts)?;
+    copy_dir_contents(&source.resources, &staged_resources)?;
+
+    Ok(staged_root)
+}
+
+#[cfg(target_os = "macos")]
+fn sh_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(target_os = "macos")]
+fn applescript_quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 #[cfg(target_os = "windows")]
@@ -315,7 +448,6 @@ fn stage_windows_installer(project_root: &std::path::Path) -> Result<std::path::
     Ok(staged_root)
 }
 
-#[cfg(target_os = "windows")]
 fn copy_dir_contents(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
     if !src.exists() {
         return Err(format!("资源目录不存在: {}", src.display()));
@@ -420,22 +552,4 @@ fn push_candidate(candidates: &mut Vec<std::path::PathBuf>, path: std::path::Pat
 fn is_project_root(path: &std::path::Path) -> bool {
     path.join("resources").join("frontend-zh-CN.json").exists()
         && path.join("scripts").join("install_windows.ps1").exists()
-}
-
-fn find_macos_installer_root() -> Option<std::path::PathBuf> {
-    project_root_candidates(None)
-        .into_iter()
-        .find(|path| {
-            path.join("install-mac.command").exists()
-                && path.join("scripts").join("patch_claude_zh_cn.py").exists()
-                && path.join("resources").join("release.json").exists()
-        })
-}
-
-/// Get the resources directory (where install scripts and translation files live)
-pub fn get_resources_dir() -> String {
-    find_macos_installer_root()
-        .or_else(find_project_root)
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| ".".to_string())
 }

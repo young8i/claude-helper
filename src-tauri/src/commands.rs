@@ -20,7 +20,7 @@ pub async fn check_zh_cn_status() -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn install_localization(
-    _app: tauri::AppHandle,
+    app: tauri::AppHandle,
     options: LocalizeOptions,
 ) -> Result<LocalizeResult, String> {
     if !localizer::validate_lang_code(&options.lang_code) {
@@ -30,10 +30,17 @@ pub async fn install_localization(
         return Err(format!("不支持的安装模式: {}", options.mode));
     }
     #[cfg(target_os = "macos")]
-    { Ok(localizer::run_install_macos(&options.lang_code, &options.mode)) }
+    {
+        let resource_dir = app_resource_dir(&app);
+        Ok(localizer::run_install_macos(
+            &options.lang_code,
+            &options.mode,
+            resource_dir.as_deref(),
+        ))
+    }
     #[cfg(target_os = "windows")]
     {
-        let resource_dir = app_resource_dir(&_app);
+        let resource_dir = app_resource_dir(&app);
         Ok(localizer::run_install_windows(
             &options.lang_code,
             &options.mode,
@@ -45,19 +52,22 @@ pub async fn install_localization(
 }
 
 #[tauri::command]
-pub async fn uninstall_localization(_app: tauri::AppHandle) -> Result<LocalizeResult, String> {
+pub async fn uninstall_localization(app: tauri::AppHandle) -> Result<LocalizeResult, String> {
     #[cfg(target_os = "macos")]
-    { Ok(localizer::run_uninstall_macos()) }
+    {
+        let resource_dir = app_resource_dir(&app);
+        Ok(localizer::run_uninstall_macos(resource_dir.as_deref()))
+    }
     #[cfg(target_os = "windows")]
     {
-        let resource_dir = app_resource_dir(&_app);
+        let resource_dir = app_resource_dir(&app);
         Ok(localizer::run_uninstall_windows(resource_dir.as_deref()))
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     { Err("当前操作系统不受支持".to_string()) }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn app_resource_dir(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     use tauri::Manager;
     app.path().resource_dir().ok()

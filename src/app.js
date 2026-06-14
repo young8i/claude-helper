@@ -216,7 +216,7 @@ function bindEvents(invoke) {
       const r = await invoke("install_localization", { options: { langCode: lang, mode } });
       clearInterval(t);
       showProgress(false);
-      appendLog(`\n✅ 完成 (${Math.floor((Date.now()-start)/1000)}s)\n${r.message}\n`);
+      appendLog(`\n${r.success ? "✅ 完成" : "❌ 失败"} (${Math.floor((Date.now()-start)/1000)}s)\n${r.message}\n`);
     } catch(e) {
       clearInterval(t);
       showProgress(false);
@@ -235,7 +235,7 @@ function bindEvents(invoke) {
     try {
       const r = await invoke("uninstall_localization");
       clearInterval(t); showProgress(false);
-      appendLog(`\n✅ 完成 (${Math.floor((Date.now()-start)/1000)}s)\n${r.message}\n`);
+      appendLog(`\n${r.success ? "✅ 完成" : "❌ 失败"} (${Math.floor((Date.now()-start)/1000)}s)\n${r.message}\n`);
     } catch(e) {
       clearInterval(t); showProgress(false);
       appendLog(`\n❌ ${e}\n`);
