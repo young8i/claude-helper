@@ -41,7 +41,7 @@ pub fn get_os_version() -> String {
         }
     } else if cfg!(target_os = "windows") {
         // Windows version
-        if let Ok(output) = std::process::Command::new("cmd")
+        if let Ok(output) = crate::process::command("cmd")
             .args(["/c", "ver"])
             .output()
         {
@@ -139,7 +139,7 @@ $fallback = @(Get-ChildItem "C:\Program Files\WindowsApps\*Claude*" -Directory -
 foreach ($dir in $fallback) { $dir.FullName }
 "#;
 
-    if let Ok(output) = std::process::Command::new("powershell.exe")
+    if let Ok(output) = crate::process::command("powershell.exe")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -257,7 +257,7 @@ pub fn get_claude_version(claude_path: &PathBuf) -> Option<String> {
         if let Some(exe_path) = get_windows_claude_exe_path(claude_path) {
             let ps_path = ps_single_quote(&exe_path.to_string_lossy());
             let command = format!("(Get-Item -LiteralPath {}).VersionInfo.ProductVersion", ps_path);
-            if let Ok(output) = std::process::Command::new("powershell.exe")
+            if let Ok(output) = crate::process::command("powershell.exe")
                 .args([
                     "-NoProfile",
                     "-NonInteractive",

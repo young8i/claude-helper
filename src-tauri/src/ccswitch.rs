@@ -126,7 +126,7 @@ fn find_ccswitch() -> (bool, Option<String>) {
         }
 
         for cmd in &["cc-switch", "ccswitch", "CC-Switch", "CCSwitch"] {
-            if let Ok(out) = std::process::Command::new("where").arg(cmd).output() {
+            if let Ok(out) = crate::process::command("where").arg(cmd).output() {
                 let p = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").trim().to_string();
                 if !p.is_empty() { return (true, Some(p)); }
             }
@@ -161,7 +161,7 @@ foreach ($app in $apps) {
 }
 "#;
 
-    let output = std::process::Command::new("powershell.exe")
+    let output = crate::process::command("powershell.exe")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -214,7 +214,7 @@ fn get_version(install_path: &str) -> Option<String> {
             "(Get-Item -LiteralPath {}).VersionInfo.ProductVersion",
             ps_single_quote(install_path),
         );
-        if let Ok(out) = std::process::Command::new("powershell.exe")
+        if let Ok(out) = crate::process::command("powershell.exe")
             .args([
                 "-NoProfile",
                 "-NonInteractive",
@@ -243,7 +243,7 @@ fn run_powershell_with_timeout(
     command: &str,
     timeout: std::time::Duration,
 ) -> Result<std::process::Output, String> {
-    let mut child = std::process::Command::new("powershell.exe")
+    let mut child = crate::process::command("powershell.exe")
         .args([
             "-NoProfile",
             "-ExecutionPolicy",
@@ -342,7 +342,7 @@ if (-not $asset) {
 $installer = Join-Path $env:TEMP $asset.name
 Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $installer -UseBasicParsing
 $escapedInstaller = '"' + ($installer -replace '"', '\"') + '"'
-$p = Start-Process -FilePath 'msiexec.exe' -ArgumentList "/i $escapedInstaller /qn /norestart" -Verb RunAs -Wait -PassThru -ErrorAction Stop
+$p = Start-Process -FilePath 'msiexec.exe' -ArgumentList "/i $escapedInstaller /qn /norestart" -WindowStyle Hidden -Verb RunAs -Wait -PassThru -ErrorAction Stop
 if ($p.ExitCode -in @(0, 3010, 1638)) { exit 0 }
 if ($null -ne $p.ExitCode) { exit $p.ExitCode }
 exit 0

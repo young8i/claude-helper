@@ -2,6 +2,7 @@
 
 mod commands;
 mod localizer;
+mod process;
 mod updater;
 mod ccswitch;
 mod system_info;

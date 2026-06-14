@@ -403,14 +403,14 @@ fn run_elevated_windows_installer(
 
     let command = format!(
         "$env:CLAUDE_ZH_SKIP_UPDATE_CHECK='1'; \
-         $p = Start-Process -FilePath {} -ArgumentList {} -WorkingDirectory {} -Verb RunAs -Wait -PassThru -ErrorAction Stop; \
+         $p = Start-Process -FilePath {} -ArgumentList {} -WorkingDirectory {} -WindowStyle Hidden -Verb RunAs -Wait -PassThru -ErrorAction Stop; \
          if ($null -ne $p.ExitCode) {{ exit $p.ExitCode }}; exit 0",
         ps_single_quote("powershell.exe"),
         ps_single_quote(&windows_command_line(&child_args)),
         ps_single_quote(&staged_root.to_string_lossy()),
     );
 
-    std::process::Command::new("powershell.exe")
+    crate::process::command("powershell.exe")
         .args([
             "-NoProfile",
             "-NonInteractive",

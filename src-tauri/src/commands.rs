@@ -168,7 +168,7 @@ pub async fn open_config_file() -> Result<String, String> {
     { std::process::Command::new("open").arg("-t").arg(&config_path).spawn()
         .map_err(|e| format!("{}", e))?; }
     #[cfg(target_os = "windows")]
-    { std::process::Command::new("cmd").args(["/c", "start", "", &config_path]).spawn()
+    { crate::process::command("cmd").args(["/c", "start", "", &config_path]).spawn()
         .map_err(|e| format!("{}", e))?; }
     Ok(format!("已打开: {}", config_path))
 }
@@ -177,7 +177,7 @@ fn open_url(url: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     { std::process::Command::new("open").arg(url).spawn().map_err(|e| format!("{}", e))?; }
     #[cfg(target_os = "windows")]
-    { std::process::Command::new("cmd").args(["/c", "start", "", url]).spawn()
+    { crate::process::command("cmd").args(["/c", "start", "", url]).spawn()
         .map_err(|e| format!("{}", e))?; }
     Ok(())
 }
