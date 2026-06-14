@@ -1,6 +1,6 @@
 {
   "productName": "Claude 中文助手",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "identifier": "com.claude-zh-helper.app",
   "build": {
     "frontendDist": "../dist",

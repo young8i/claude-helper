@@ -1,6 +1,6 @@
 [package]
 name = "claude-zh-helper"
-version = "1.1.10"
+version = "1.1.11"
 description = "Claude Desktop 中文助手 - 一键汉化、更新检测、ccSwitch 配置、第三方 API 引导"
 authors = ["Claude ZH Helper Team"]
 edition = "2021"
