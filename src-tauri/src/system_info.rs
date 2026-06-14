@@ -210,6 +210,21 @@ fn get_windows_claude_exe_path(claude_path: &Path) -> Option<PathBuf> {
     None
 }
 
+#[cfg(target_os = "windows")]
+pub fn launch_claude_desktop() -> Result<(), String> {
+    let claude_path = find_claude_path().ok_or_else(|| "未找到 Claude Desktop 安装".to_string())?;
+    let exe_path = get_windows_claude_exe_path(&claude_path).ok_or_else(|| {
+        format!("未找到 Claude.exe: {}", claude_path.display())
+    })?;
+
+    crate::process::command("cmd.exe")
+        .args(["/D", "/C", "start", ""])
+        .arg(&exe_path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("无法启动 Claude Desktop: {}", e))
+}
+
 /// Get Claude Desktop version from Info.plist (macOS) or executable metadata (Windows)
 pub fn get_claude_version(claude_path: &PathBuf) -> Option<String> {
     #[cfg(target_os = "macos")]

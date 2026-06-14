@@ -1,5 +1,6 @@
 ﻿param(
     [switch]$Interactive,
+    [switch]$NoRestart,
     [switch]$SkipAsarPatch,
     [ValidateSet("safe", "official", "full")]
     [string]$PatchMode = "full",
@@ -2357,7 +2358,7 @@ function Restart-Claude {
 
     $exe = Get-ClaudeExePath $ClaudePath
     if ($exe) {
-        Start-Process $exe
+        Start-Process -FilePath "explorer.exe" -ArgumentList @("`"$exe`"") -WindowStyle Hidden
         Write-Host "  restarted Claude Desktop" -ForegroundColor Green
         return
     }
@@ -2429,8 +2430,13 @@ function Install-WindowsLanguagePack {
 
         Write-Step "[9/9] 写入用户语言配置"
         Set-ClaudeLocale $LanguageCode
-        Write-Step "重启 Claude Desktop"
-        Restart-Claude $claudePath
+        if ($NoRestart) {
+            Write-Step "完成安装"
+            Write-Host "  已完成补丁写入，调用方将重新打开 Claude Desktop。" -ForegroundColor Green
+        } else {
+            Write-Step "重启 Claude Desktop"
+            Restart-Claude $claudePath
+        }
 
         Write-Host ""
         Write-Host "安装完成。如果界面未立即切换，请在 Language 中选择 $label。" -ForegroundColor Green

@@ -106,9 +106,13 @@ pub fn run_install_windows(
 
             if output.status.success() {
                 steps.push("PowerShell 安装脚本执行完成！".to_string());
+                let restart_note = restart_claude_after_windows_install(&mut steps);
                 LocalizeResult {
                     success: true,
-                    message: format!("✅ 中文补丁安装成功！语言: {}, 模式: {}\n\n已通过 PowerShell 执行安装脚本，请重启 Claude Desktop 生效。", lang_code, mode),
+                    message: format!(
+                        "✅ 中文补丁安装成功！语言: {}, 模式: {}\n\n{}",
+                        lang_code, mode, restart_note
+                    ),
                     steps,
                 }
             } else {
@@ -401,6 +405,10 @@ fn run_elevated_windows_installer(
         child_args.push(mode.to_string());
     }
 
+    if action == "install" {
+        child_args.push("-NoRestart".to_string());
+    }
+
     let command = format!(
         "$env:CLAUDE_ZH_SKIP_UPDATE_CHECK='1'; \
          $p = Start-Process -FilePath {} -ArgumentList {} -WorkingDirectory {} -WindowStyle Hidden -Verb RunAs -Wait -PassThru -ErrorAction Stop; \
@@ -429,6 +437,20 @@ fn run_elevated_windows_installer(
         stdout: Vec::new(),
         stderr: Vec::new(),
     })
+}
+
+#[cfg(target_os = "windows")]
+fn restart_claude_after_windows_install(steps: &mut Vec<String>) -> String {
+    match crate::system_info::launch_claude_desktop() {
+        Ok(()) => {
+            steps.push("已重新打开 Claude Desktop。".to_string());
+            "已重新打开 Claude Desktop。".to_string()
+        }
+        Err(e) => {
+            steps.push(format!("自动打开 Claude Desktop 失败: {}", e));
+            format!("补丁已安装，请手动打开 Claude Desktop 生效。\n\n自动打开失败: {}", e)
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
