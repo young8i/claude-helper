@@ -410,7 +410,7 @@ fn run_elevated_windows_installer(
         ps_single_quote(&staged_root.to_string_lossy()),
     );
 
-    crate::process::command("powershell.exe")
+    let status = crate::process::command("powershell.exe")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -419,8 +419,16 @@ fn run_elevated_windows_installer(
             "-Command",
             &command,
         ])
-        .output()
-        .map_err(|e| format!("无法启动 PowerShell: {}", e))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_err(|e| format!("无法启动 PowerShell: {}", e))?;
+
+    Ok(std::process::Output {
+        status,
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+    })
 }
 
 #[cfg(target_os = "windows")]

@@ -379,9 +379,11 @@ exit 0
 pub fn get_config_guide() -> String {
     r##"# cc-switch 安装与配置教程
 
-cc-switch 是免费开源的 Claude Desktop / Claude Code 配置管理工具（[github.com/farion1231/cc-switch](https://github.com/farion1231/cc-switch)）。
+cc-switch 是 Claude Desktop / Claude Code 配置管理工具。
 
 ## 安装方式
+
+推荐通过本工具首页的快速入口下载安装包。
 
 **macOS**:
 ```bash
@@ -393,8 +395,6 @@ brew install --cask cc-switch
 ```bash
 winget install --id farion1231.CC-Switch --exact --source winget
 ```
-
-也可从 [GitHub Releases](https://github.com/farion1231/cc-switch/releases) 手动下载安装包。
 
 ## 启动与使用
 
@@ -411,9 +411,6 @@ winget install --id farion1231.CC-Switch --exact --source winget
 | 官方 API 中文 | 模式 2 | 不需要 |
 | 全部功能 | 模式 3 | 代理模式 |
 
-> ⚠️ **安全提醒**: cc-switch **完全免费**。任何收费的 "CC Switch" 都是钓鱼网站。只从 https://ccswitch.io 或 GitHub 官方下载。
-
-📖 官网：https://ccswitch.io
-💬 反馈：https://github.com/farion1231/cc-switch/issues
+> ⚠️ **安全提醒**: cc-switch **完全免费**。任何收费的 "CC Switch" 都是钓鱼网站。请使用本工具提供的下载入口或商家提供的安装包。
 "##.to_string()
 }
